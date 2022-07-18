@@ -4,7 +4,6 @@ from subsetPandas import rc_pd
 from functools import reduce
 _stdLinProg = ('c', 'A_ub','b_ub','A_eq','b_eq','bounds')
 
-
 def noneInitList(x,FallBackVal):
 	return FallBackVal if x is None else [x]
 
@@ -55,17 +54,14 @@ def fIndex_Series(variableName, index, btype ='v'):
 def fIndex(variableName, index, btype = 'v'):
 	return setattrReturn(pd.MultiIndex.from_tuples([(variableName,None)], names = stdNames(btype)), '_n', []) if index is None else fIndex_Series(variableName,index, btype = btype)
 
-def vIndex_Series(find):
-	if len(find._n)==1:
-		return find.droplevel(0).set_names(find._n)
-	else:
-		return pd.MultiIndex.from_tuples(find.droplevel(0), names = find._n)
-
-def vIndex(find):
-	return vIndex_Series(find) if len(find._n) else None
-
 def fIndexVariable(variableName, v, btype = 'v'):
 	return pd.Series(database.getValues(v), index = fIndex(variableName, database.getIndex(v), btype = btype))
+
+def vIndex_Series(f,variable,names):
+	return f.xs(variable).index.set_names(names) if len(names)==1 else pd.MultiIndex.from_tuples(f.xs(variable).index.values,names=names)
+
+def vIndexVariable(f, variable, names):
+	return pd.Series(f.xs(variable).values, index = vIndex_Series(f,variable,names)) if names else f.xs(variable)[0]
 
 # 3: Methods on iterator of symbols
 def sumIte(ite,fill_value=0):
@@ -99,6 +95,7 @@ class lpBlock:
 		self.blocks = {k: ifinInit(k,kwargs,None) for k in ('c','eq','ub','u','l')}
 		self.parameters = {}
 		self.compiled = {}
+		self.broadcasted = {}
 
 	def get(self, item, attr='parameters'):
 		return getattr(self,attr)[item]
@@ -115,6 +112,12 @@ class lpBlock:
 				return (v for kk,v in getattr(self,attr).items() if (kk[0:2] == (k,par)) and (kk[-1] in noneInitList(constr, self.getConstraints(k))))
 			elif par == 'A':
 				return (v for kk,v in getattr(self,attr).items() if (kk[0:2] == (k,par)) and (kk[3] in noneInitList(var, self.getVariables(attr=attr))) and (kk[2] in noneInitList(constr, self.getConstraints(k))))
+		elif is_iterable(k) and par is None:
+			return (v for kk,v in getattr(self,attr).items() if (kk[0] in k) and (kk[1] in noneInitList(var, self.getVariables(attr=attr))))
+		elif is_iterable(k) and par == 'b':
+			return (v for kk,v in getattr(self,attr).items() if (kk[0] in k and kk[1] == par) and (kk[-1] in noneInitList(constr, self.getConstraints(k))))
+		elif is_iterable(k) and par == 'A':
+			return (v for kk,v in getattr(self,attr).items() if (kk[0] in k and kk[1] == par) and (kk[3] in noneInitList(var,self.getVariables(attr=attr))) and (kk[2] in noneInitList(constr, self.getConstraints(k))))
 		else:
 			raise KeyError(f"Invalid combination of k = {k} and par = {par}.")
 
@@ -127,7 +130,7 @@ class lpBlock:
 	def readConstraintsFromBlocks_A(self,t):
 		return set([k['constrName'] for k in self[t] if 'A' in k])
 	def getConstraints(self, t):
-		return set([k[-1] for k in  self.parameters if k[0:2] == (t,'b')])
+		return set([k[-1] for k in  self.parameters if k[0:2] == (t,'b')]) if not is_iterable(t) else set([k[-1] for k in self.parameters if (k[0] in t) and (k[1] == 'b')])
 	def getVariables(self, attr = 'parameters'):
 		return set([k[-1] for k in  getattr(self,attr) if (k[0] == 'c') or (k[0] in ('eq','ub') and k[1] == 'A')])
 	def getVariables_t(self, t, attr = 'parameters'):
@@ -200,6 +203,12 @@ class lpBlock:
 		self.gIndex = {k: fIndex(k, self.domains_var(k)) for k in self.getVariables(attr='compiled')}
 		return self.gIndex
 
+	def readIndexNames(self, k):
+		try:
+			return next(self.getIte(('c','l','u'),var=k,attr='compiled')).index._n
+		except StopIteration:
+			return next(self.getIte(('eq','ub'),par='A',var=k,attr='compiled')).index._nA
+
 	def domains_var(self, k):
 		index = reduce(pd.Index.union, [self.get((t,k),attr='compiled').index.levels[1] for t in ('c','u','l') if (t,k) in self.compiled]+[s.index.levels[1] for s in self.getIte('eq',par='A',var=k,attr='compiled')]+[s.index.levels[1] for s in self.getIte('ub',par='A',var=k,attr='compiled')])
 		return None if index.empty else index
@@ -208,11 +217,12 @@ class lpBlock:
 	def settingsFromCompiled(self):
 		self.allvars = sorted(self.getVariables(attr='compiled'))
 		self.allconstr = {t: sorted(self.getConstraints(t)) for t in ('eq','ub')}
+		self.alldomains = {k: self.readIndexNames(k) for k in self.allvars}
 
 	def broadcastAndSort(self):
-		[self.set((t,k), self.broadcastAndSort_i(t,k),attr='compiled') for t in ('c','l') for k in self.allvars];
-		[self.set(('u',k), self.broadcastAndSort_i('u',k,val=None), attr='compiled') for k in self.allvars];
-		[self.set((t,'A',constr,k), self.broadcastAndSort_Ai(t,constr,k,self.get((t,'b',constr),attr='compiled').index), attr='compiled') for t in ('eq','ub') for constr in self.allconstr[t] for k in self.allvars];
+		[self.set((t,k), self.broadcastAndSort_i(t,k),attr='broadcasted') for t in ('c','l') for k in self.allvars];
+		[self.set(('u',k), self.broadcastAndSort_i('u',k,val=None), attr='broadcasted') for k in self.allvars];
+		[self.set((t,'A',constr,k), self.broadcastAndSort_Ai(t,constr,k,self.get((t,'b',constr),attr='compiled').index), attr='broadcasted') for t in ('eq','ub') for constr in self.allconstr[t] for k in self.allvars];
 
 	def broadcastAndSort_i(self, t, k, val=0):
 		return broadcast(self.get((t,k),attr='compiled') if k in self.getVariables_t(t,attr='compiled') else val, self.gIndex[k], fill_value = val).sort_index()
@@ -228,29 +238,26 @@ class lpBlock:
 
 	@property
 	def lp_args(self):
-		return {k: getattr(self, 'lp_'+k) for k in _stdLinProg} 
-
+		return {k: getattr(self, 'lp_'+k) for k in _stdLinProg}
+	@property
+	def lp_solutionIndex(self):
+		return stackIndex([self.get(('c',k),attr='broadcasted') for k in self.allvars], names = stdNames('v'))
 	@property
 	def lp_c(self):
-		return stackValues([self.get(('c',k),attr='compiled') for k in self.allvars])
+		return stackValues([self.get(('c',k),attr='broadcasted') for k in self.allvars])
 	@property
 	def lp_bounds(self):
-		return np.vstack([	stackValues([self.get(('l',k),attr='compiled') for k in self.allvars]), 
-							stackValues([self.get(('u',k),attr='compiled') for k in self.allvars])]).T
+		return np.vstack([	stackValues([self.get(('l',k),attr='broadcasted') for k in self.allvars]), 
+							stackValues([self.get(('u',k),attr='broadcasted') for k in self.allvars])]).T
 	@property
 	def lp_A_eq(self):
-		return np.hstack([np.vstack([self.get(('eq','A',constr,k),attr='compiled').unstack(level=-1).values for k in self.allvars]) for constr in self.allconstr['eq']]).T if self.allconstr['eq'] else None
+		return np.hstack([np.vstack([self.get(('eq','A',constr,k),attr='broadcasted').unstack(level=-1).values for k in self.allvars]) for constr in self.allconstr['eq']]).T if self.allconstr['eq'] else None
 	@property
 	def lp_A_ub(self):
-		return np.hstack([np.vstack([self.get(('ub','A',constr,k),attr='compiled').unstack(level=-1).values for k in self.allvars]) for constr in self.allconstr['ub']]).T if self.allconstr['ub'] else None
+		return np.hstack([np.vstack([self.get(('ub','A',constr,k),attr='broadcasted').unstack(level=-1).values for k in self.allvars]) for constr in self.allconstr['ub']]).T if self.allconstr['ub'] else None
 	@property
 	def lp_b_eq(self):
 		return stackValues([self.get(('eq','b',k),attr='compiled') for k in self.allconstr['eq']]) if self.allconstr['eq'] else None
 	@property
 	def lp_b_ub(self):
 		return stackValues([self.get(('ub','b',k),attr='compiled') for k in self.allconstr['ub']]) if self.allconstr['ub'] else None
-
-	# 5: Stack components:
-	def getSimple(self,t):
-		""" Works for c, u, l"""
-		return stackSeries([self.get((t,k),attr='compiled') for k in self.allvars], stdNames('v'))

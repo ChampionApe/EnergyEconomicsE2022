@@ -65,7 +65,7 @@ class db:
 
 	def __setitem__(self,item,value):
 		if item in self.symbols:
-			if not is_iterable(value) and is_iterable(self[item].vals):
+			if not is_iterable(value) and is_iterable(self[item]):
 				value = pd.Series(value,index=self[item].index,name=self[item].name)
 		self.symbols[item] = value
 
