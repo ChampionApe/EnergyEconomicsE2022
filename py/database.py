@@ -1,4 +1,5 @@
 from _mixedTools import *
+from copy import deepcopy
 _numtypes = (int,float,np.generic)
 
 def type_(s):
@@ -74,7 +75,7 @@ class db:
 
 	def copy(self):
 		obj = type(self).__new__(self.__class__,None)
-		obj.__dict__.update(self.__dict__.items())
+		obj.__dict__.update(deepcopy(self.__dict__).items())
 		return obj
 
 	def getTypes(self,types=['variable']):

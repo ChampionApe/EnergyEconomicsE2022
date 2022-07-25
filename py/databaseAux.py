@@ -15,6 +15,13 @@ def applyMult(symbol, mapping):
 		else: 
 			return symbol.add(pd.Series(0, index = rc_pd(mapping,symbol))).reorder_levels(symbol.index.names+[k for k in mapping.names if k not in symbol.index.names])
 
+def appIndexWithCopySeries(s, copyLevel, newLevel):
+	s.index = appendIndexWithCopy(s.index,copyLevel,newLevel)
+	return s
+
+def appendIndexWithCopy(index, copyLevel, newLevel):
+	return pd.MultiIndex.from_frame(index.to_frame(index=False).assign(**{newLevel: index.get_level_values(copyLevel)}))
+
 def grid(v0,vT,index,gridtype='linear',phi=1):
 	""" If v0, vT are 1d numpy arrays, returns 2d array. If scalars, returns 1d arrays. """
 	if gridtype == 'linear':
