@@ -29,6 +29,14 @@ def mult_graphs():
     plt.rc('legend', fontsize=SMALL_SIZE)    # legend fontsize
     plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title    
 
+def demandLinear_df(mwp, load, minX = 0, minY = 0):
+    df = pd.DataFrame({'c': mwp if is_iterable(mwp) else [mwp], 'q': load if is_iterable(load) else [load]}).sort_values(by='c', ascending=False)
+    df['q'] = df['q'].cumsum()
+    df.loc['_01'] = [df['c'].iloc[0], minX]
+    df.loc['_0E'] = [minY, df['q'].iloc[-2]+np.finfo(float).eps]
+    df = df.sort_values(by='q')
+    df['aux'] = df.apply(lambda x, shift: np.roll(x,shift)+np.finfo(float).eps,shift=1)['q']
+    return pd.concat([df[['c','q']], df[['c','aux']].iloc[2:-1].rename(columns={'aux':'q'})]).sort_values(by='q').set_index('q')
 
 def meritOrderCurve(mc, production, figsize = None, **kwargs):
 	one_graph()
@@ -37,14 +45,14 @@ def meritOrderCurve(mc, production, figsize = None, **kwargs):
 	fig.tight_layout()
 	ax.set_ylabel("€/GJ" ,labelpad=10)
 
-
-def meritOrderCurve_df(mc, production, minX = 0, minY = 0, DeltaMaxX = 1):
-	df = pd.DataFrame({'c': mc, 'q': production}).sort_values(by='c')
-	df['q'] = df['q'].cumsum()
-	df.loc['_01'] = [df['c'].iloc[0], minY]
-	df.loc['_0E'] = [df['c'].iloc[-2], df['q'][-2]+DeltaMaxX]
-	df = df.sort_values(by=['c','q'])
-	df['aux'] = df.apply(lambda x, shift: np.roll(x,shift)+np.finfo(float).eps, shift=1)['q']
-	df = pd.concat([df[['c','q']], df[['c','aux']].iloc[1:].rename(columns={'aux':'q'})]).sort_values(by=['c','q']).set_index('q').rename_axis(index={'q': '$\sum_i E_i$'}).rename(columns={'c': '$Supply$'})
-	df.loc[minX] = minY
-	return df
+def meritOrderCurve_df(mc, production, minX = 0, minY = 0, maxY = None):
+    maxY = mc.max()+5 if maxY is None else maxY
+    df = pd.DataFrame({'c': mc, 'q': production}).sort_values(by='c')
+    df['q'] = df['q'].cumsum()
+    df.loc['_01'] = [df['c'].iloc[0], minY]
+    df.loc['_0E'] = [maxY, df['q'][-2]+np.finfo(float).eps]
+    df = df.sort_values(by=['c','q'])
+    df['aux'] = df.apply(lambda x, shift: np.roll(x,shift)+np.finfo(float).eps, shift=1)['q']
+    df = pd.concat([df[['c','q']].iloc[0:-1], df[['c','aux']].iloc[1:].rename(columns={'aux':'q'})]).sort_values(by=['c','q']).set_index('q').rename_axis(index={'q': '$\sum_i E_i$'}).rename(columns={'c': '$Supply$'})
+    df.loc[minX] = minY
+    return df

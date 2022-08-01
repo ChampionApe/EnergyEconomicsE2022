@@ -4,6 +4,9 @@ from subsetPandas import rc_pd
 from functools import reduce
 _stdLinProg = ('c', 'A_ub','b_ub','A_eq','b_eq','bounds')
 
+def emptyArrayIfEmpty(x):
+	return x if x else [np.array([])]
+
 def noneInitList(x,FallBackVal):
 	return FallBackVal if x is None else [x]
 
@@ -57,11 +60,15 @@ def fIndex(variableName, index, btype = 'v'):
 def fIndexVariable(variableName, v, btype = 'v'):
 	return pd.Series(database.getValues(v), index = fIndex(variableName, database.getIndex(v), btype = btype))
 
-def vIndex_Series(f,variable,names):
-	return f.xs(variable).index.set_names(names) if len(names)==1 else pd.MultiIndex.from_tuples(f.xs(variable).index.values,names=names)
+def vIndex_Series(f,names):
+	return f.index.set_names(names) if len(names)==1 else pd.MultiIndex.from_tuples(f.index.values,names=names)
 
 def vIndexVariable(f, variable, names):
-	return pd.Series(f.xs(variable).values, index = vIndex_Series(f,variable,names)) if names else f.xs(variable)[0]
+	return pd.Series(f.xs(variable).values, index = vIndex_Series(f.xs(variable),names)) if names else f.xs(variable)[0]
+
+def vIndexSymbol_dual(f, symbol, names):
+	keep = f.xs(symbol)
+	return pd.Series(keep.values, index = pd.MultiIndex.from_frame(vIndex_Series(keep.droplevel('_type'), names).to_frame(index=False).assign(_type=keep.index.get_level_values('_type')))) if names else keep.droplevel('_sindex')
 
 # 3: Methods on iterator of symbols
 def sumIte(ite,fill_value=0):
@@ -209,6 +216,9 @@ class lpBlock:
 		except StopIteration:
 			return next(self.getIte(('eq','ub'),par='A',var=k,attr='compiled')).index._nA
 
+	def readConstrIndexNames(self, k):
+		return next(self.getIte(('eq','ub'), par='A', constr=k ,attr='compiled')).index._nb
+		
 	def domains_var(self, k):
 		index = reduce(pd.Index.union, [self.get((t,k),attr='compiled').index.levels[1] for t in ('c','u','l') if (t,k) in self.compiled]+[s.index.levels[1] for s in self.getIte('eq',par='A',var=k,attr='compiled')]+[s.index.levels[1] for s in self.getIte('ub',par='A',var=k,attr='compiled')])
 		return None if index.empty else index
@@ -218,6 +228,7 @@ class lpBlock:
 		self.allvars = sorted(self.getVariables(attr='compiled'))
 		self.allconstr = {t: sorted(self.getConstraints(t)) for t in ('eq','ub')}
 		self.alldomains = {k: self.readIndexNames(k) for k in self.allvars}
+		self.allconstrdomains = {k: self.readConstrIndexNames(k) for k in self.allconstr['eq']+self.allconstr['ub']}
 
 	def broadcastAndSort(self):
 		[self.set((t,k), self.broadcastAndSort_i(t,k),attr='broadcasted') for t in ('c','l') for k in self.allvars];
@@ -232,7 +243,7 @@ class lpBlock:
 		return full.add(self.get((t,'A',constr,k),attr='compiled'),fill_value=0).sort_index() if k in self.getVariables_i(t,constr,attr='compiled') else full.sort_index()
 
 	# 5: Methods to get the stacked numpy arrays:
-	def __call__(self, execute = None):
+	def __call__(self, execute=None):
 		[getattr(self, k)() for k in noneInit(execute, ['readParameters','compileParameters','settingsFromCompiled','inferGlobalDomains','broadcastAndSort'])];
 		return self.lp_args
 
@@ -246,9 +257,14 @@ class lpBlock:
 	def lp_c(self):
 		return stackValues([self.get(('c',k),attr='broadcasted') for k in self.allvars])
 	@property
+	def lp_l(self): 
+		return stackValues([self.get(('l',k),attr='broadcasted') for k in self.allvars])
+	@property
+	def lp_u(self): 
+		return stackValues([self.get(('u',k),attr='broadcasted') for k in self.allvars])
+	@property
 	def lp_bounds(self):
-		return np.vstack([	stackValues([self.get(('l',k),attr='broadcasted') for k in self.allvars]), 
-							stackValues([self.get(('u',k),attr='broadcasted') for k in self.allvars])]).T
+		return np.vstack([self.lp_l, self.lp_u]).T
 	@property
 	def lp_A_eq(self):
 		return np.hstack([np.vstack([self.get(('eq','A',constr,k),attr='broadcasted').unstack(level=-1).values for k in self.allvars]) for constr in self.allconstr['eq']]).T if self.allconstr['eq'] else None
@@ -261,3 +277,20 @@ class lpBlock:
 	@property
 	def lp_b_ub(self):
 		return stackValues([self.get(('ub','b',k),attr='compiled') for k in self.allconstr['ub']]) if self.allconstr['ub'] else None
+
+	def dual_solution(self, sol):
+		return pd.Series(self.dual_solutionValues(sol), index = self.dual_solutionIndex)
+
+	@property
+	def dual_solutionIndex(self):
+		ite = ( emptyArrayIfEmpty([self.get(('eq','b',k),attr='compiled').index.values for k in self.allconstr['eq']])+
+				emptyArrayIfEmpty([self.get(('ub','b',k),attr='compiled').index.values for k in self.allconstr['ub']])+
+				[self.lp_solutionIndex.values]+
+				[self.lp_solutionIndex.values])
+		return pd.MultiIndex.from_frame(pd.MultiIndex.from_tuples(np.hstack(ite), names = stdNames('s')).to_frame(index=False).assign(_type=self.typeVector(ite)))
+
+	def typeVector(self, ite):
+		return np.hstack([['eq']*len(ite[0]), ['ub']*len(ite[1]), ['l']*len(ite[2]), ['u']*len(ite[3])])
+
+	def dual_solutionValues(self, sol):
+		return np.hstack([sol['eqlin']['marginals'], sol['ineqlin']['marginals'], sol['lower']['marginals'], sol['upper']['marginals']])

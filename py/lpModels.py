@@ -1,51 +1,33 @@
 from _mixedTools import *
-from scipy import optimize
 from databaseAux import appIndexWithCopySeries
+from scipy import optimize
 import lpCompiler
 _stdLinProg = ('c', 'A_ub', 'b_ub', 'A_eq', 'b_eq', 'bounds')
 
-
 def loopxs(x, l, loopName):
     return x.xs(l, level=loopName) if isinstance(x.index, pd.MultiIndex) else x[l]
-
 
 def updateFromGrids(db, grids, loop, l):
     [db.addOrMerge(g.name, loopxs(g, l, loop.name), priority='second')
      for g in grids]
 
-
 def readSolutionLoop(sol, loop, i, extract, db):
     return pd.concat(list(sol[:, i]), axis=1).set_axis(loop, axis=1).stack() if isinstance(db[extract[i]], pd.Series) else pd.Series(sol[:, i], index=loop)
 
-# A few basic functions for the energy models:
-def fuelCost(db):
-    return db['FuelPrice'].add(pdSum(db['EmissionIntensity'] * db['EmissionTax'], 'EmissionType'), fill_value=0)
-
-
-def mc(db):
-    return pdSum((db['FuelMix'] * fuelCost(db)).dropna(), 'BFt').add(db['OtherMC'])
-
-
-def fuelConsumption(db, sumOver='id'):
-    return pdSum((db['Generation'] * db['FuelMix']).dropna(), sumOver)
-
-
-def emissionsFuel(db, sumOver='BFt'):
-    return pdSum((db['FuelConsumption'] * db['EmissionIntensity']).dropna(), sumOver)
-
-
 class modelShell:
-    def __init__(self, db, blocks=None, **kwargs):
+    def __init__(self, db, blocks=None, method = 'highs', computeDual = True, **kwargs):
         self.db = db
+        self.method = method
+        self.computeDual = computeDual
         self.blocks = noneInit(blocks, lpCompiler.lpBlock(**kwargs))
         if hasattr(self, 'globalDomains'):
             self.blocks.globalDomains = self.globalDomains
 
-    def solve(self, preSolve=None, initBlocks=None, postSolve=None, printSol=True):
+    def solve(self, preSolve=None, initBlocks=None, postSolve=None, printSol=True, solkwargs = None):
         if hasattr(self, 'preSolve'):
             self.preSolve(**noneInit(preSolve, {}))
         self.initBlocks(**noneInit(initBlocks, {}))
-        sol = optimize.linprog(**self.blocks())
+        sol = optimize.linprog(method = self.method, **self.blocks(**noneInit(solkwargs,{})))
         if printSol:
             print(f"Solution status {sol['status']}: {sol['message']}")
         self.postSolve(sol, **noneInit(initBlocks, {}))
@@ -54,9 +36,20 @@ class modelShell:
         fullVector = pd.Series(sol['x'], index=self.blocks.lp_solutionIndex)
         return {k: lpCompiler.vIndexVariable(fullVector, k, v) for k, v in self.blocks.alldomains.items()}
 
+    def unloadDualSolution(self, sol):
+    	fullVector = self.blocks.dual_solution(sol)
+    	return self.unloadShadowValuesConstraints(fullVector) | self.unloadShadowValuesBounds(fullVector)
+
+    def unloadShadowValuesBounds(self, fullVector):
+    	return {'λ_'+k: lpCompiler.vIndexSymbol_dual(fullVector, k, v) for k, v in self.blocks.alldomains.items()}
+
+    def unloadShadowValuesConstraints(self, fullVector):
+    	return {'λ_'+k: lpCompiler.vIndexSymbol_dual(fullVector, k, v) for k,v in self.blocks.allconstrdomains.items()}
+
     def unloadToDb(self, sol):
-        [self.db.__setitem__(k, v)
-         for k, v in self.unloadSolution(sol).items()]
+        [self.db.__setitem__(k, v) for k, v in self.unloadSolution(sol).items()]
+        if self.computeDual:
+        	[self.db.__setitem__(k,v) for k,v in self.unloadDualSolution(sol).items()];
 
     def loopSolveExtract(self, loop, grids, extract, preSolve=None, initBlocks=None, postSolve=None, printSol=False):
         """ Update exogenous parameters in loop, solve, and extract selected variables """
@@ -70,71 +63,4 @@ class modelShell:
                    postSolve=postSolve, printSol=printSol)
         return [self.db[k] for k in extract]
 
-
-class mBasic(modelShell):
-    def __init__(self, db, blocks=None, **kwargs):
-        super().__init__(db, blocks=blocks, **kwargs)
-
-    def preSolve(self, recomputeMC=False, **kwargs):
-        if ('mc' not in self.db.symbols) or recomputeMC:
-            self.db['mc'] = mc(self.db)
-
-    @property
-    def globalDomains(self):
-        return {'Generation': self.db['id']}
-
-    def initBlocks(self, **kwargs):
-        self.blocks['c'] = [
-            {'variableName': 'Generation', 'parameter': self.db['mc']}]
-        self.blocks['u'] = [{'variableName': 'Generation',
-                             'parameter': self.db['GeneratingCapacity']}]
-        self.blocks['eq'] = [{'constrName': 'equilibrium', 'b': sum(self.db['Load']), 'A': [
-            {'variableName': 'Generation', 'parameter': 1}]}]
-
-    def postSolve(self, solution, **kwargs):
-        if solution['status'] == 0:
-            self.unloadToDb(solution)
-            self.db['SystemCosts'] = solution['fun']
-            self.db['FuelConsumption'] = fuelConsumption(self.db)
-            self.db['Emissions'] = emissionsFuel(self.db)
-
-
-class mBasicInt(modelShell):
-    def __init__(self, db, blocks=None, **kwargs):
-    	super().__init__(db, blocks=blocks, **kwargs)
-
-    @property
-    def hourlyGeneratingCapacity(self):
-        return (lpCompiler.broadcast(self.db['GeneratingCapacity'], self.db['id2hvt']) * self.db['CapVariation']).droplevel('hvt')
-
-    @property
-    def hourlyLoad(self):
-        return pdSum(self.db['LoadVariation'] * self.db['Load'], 'l')
-
-    def preSolve(self, recomputeMC=False, **kwargs):
-        if ('mc' not in self.db.symbols) or recomputeMC:
-            self.db['mc'] = mc(self.db)
-
-    @property
-    def globalDomains(self):
-        return {'Generation': pd.MultiIndex.from_product([self.db['h'], self.db['id']]),
-                'HourlyDemand': self.db['h'],
-                'equilibrium': self.db['h_alias']}
-
-    def initBlocks(self, **kwargs):
-        self.blocks['c'] = [{'variableName': 'Generation', 'parameter': lpCompiler.broadcast(self.db['mc'], self.db['h'])},
-                            {'variableName': 'HourlyDemand', 'parameter': -self.db['MWP_LoadShedding']}]
-        self.blocks['u'] = [{'variableName': 'Generation', 'parameter': self.hourlyGeneratingCapacity},
-                            {'variableName': 'HourlyDemand', 'parameter': self.hourlyLoad}]
-        self.blocks['eq'] = [{'constrName': 'equilibrium', 'b': None, 
-        					'A': [{'variableName': 'Generation', 'parameter'  : appIndexWithCopySeries(pd.Series(1, index = self.globalDomains['Generation']), 'h','h_alias')},
-        						  {'variableName': 'HourlyDemand', 'parameter': appIndexWithCopySeries(pd.Series(-1, index = self.globalDomains['HourlyDemand']), 'h','h_alias')}
-        						 ]
-        					 }
-        					]
-
-    def postSolve(self, solution, **kwargs):
-        if solution['status'] == 0:
-            self.unloadToDb(solution)
-            self.db['Welfare'] = solution['fun']
 
