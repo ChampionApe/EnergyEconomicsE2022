@@ -52,7 +52,7 @@ def setattrReturn(symbol, k,v):
 	return symbol
 
 def fIndex_Series(variableName, index, btype ='v'):
-	return setattrReturn(pd.MultiIndex.from_product([[variableName],reorderStd(index).values], names=stdNames(btype)), '_n', index.names)
+	return setattrReturn(pd.MultiIndex.from_product([[variableName],reorderStd(index).values], names=stdNames(btype)), '_n', sorted(index.names))
 
 def fIndex(variableName, index, btype = 'v'):
 	return setattrReturn(pd.MultiIndex.from_tuples([(variableName,None)], names = stdNames(btype)), '_n', []) if index is None else fIndex_Series(variableName,index, btype = btype)

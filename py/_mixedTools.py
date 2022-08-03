@@ -17,7 +17,7 @@ def pdGb(x, by):
 	else:
 		return x.groupby([k for k in x.index.names if k != by])
 def pdSum(x,sumby):
-	return pdGb(x, sumby).sum()
+	return pdGb(x, sumby).sum() if isinstance(x.index, pd.MultiIndex) else sum(x)	
 
 def cartesianProductIndex(indices):
 	""" Return the cartesian product of pandas indices; assumes no overlap in levels of indices. """
