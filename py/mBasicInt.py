@@ -26,22 +26,22 @@ def totalCosts(db):
     return fixedCosts(db).add(variableCosts(db),fill_value = 0)
 
 def averageCapacityCosts(db):
-    return 1000 * totalCosts(db) / db['GeneratingCapacity']
+    return 1000 * totalCosts(db) / pdNonZero(db['GeneratingCapacity'])
 
 def averageEnergyCosts(db):
-    return 1000 * totalCosts(db) / pdSum(db['Generation'], 'h')
+    return 1000 * totalCosts(db) / pdNonZero(pdSum(db['Generation'], 'h'))
 
 def theoreticalCapacityFactor(db):
-    return pdSum(db['Generation']/(len(db['h']) * db['GeneratingCapacity']), 'h')
+    return pdSum( (db['Generation']/pdNonZero(len(db['h']) * db['GeneratingCapacity'])).dropna(), 'h')
 
 def practicalCapacityFactor(model):
-    return pdSum(model.db['Generation'], 'h')/pdSum(model.hourlyGeneratingCapacity, 'h')
+    return ( pdSum(model.db['Generation'], 'h')/ pdNonZero(pdSum(model.hourlyGeneratingCapacity, 'h')) ).dropna()
 
 def marginalSystemCosts(db):
     return rc_pd(db['λ_equilibrium'], alias={'h_alias':'h'}).droplevel('_type')
 
 def meanMarginalSystemCost(db, var):
-    return pdSum( (var * marginalSystemCosts(db)) / pdSum(var, 'h'), 'h')
+    return pdSum( (var * marginalSystemCosts(db)) / pdNonZero(pdSum(var, 'h')), 'h')
 
 def downlift(db):
     return meanMarginalSystemCost(db, db['HourlyDemand']) - meanMarginalSystemCost(db, db['Generation'])
@@ -52,7 +52,7 @@ def marginalEconomicRevenue(model):
     return pdSum(marginalSystemCosts(model.db) * rc_pd(model.hourlyCapFactors, ϑ), 'h')
 
 def marginalEconomicValue(model):
-    return - pdSum(model.db['λ_Generation'].xs('u',level='_type') * model.hourlyCapFactors, 'h')
+    return - pdSum(model.db['λ_Generation'].xs('u',level='_type') * model.hourlyCapFactors, 'h').add( 1000 * model.db['FOM'] * len(model.db['h'])/8760, fill_value = 0)
 
 class mBasicInt(modelShell):
     def __init__(self, db, blocks=None, **kwargs):
@@ -65,7 +65,7 @@ class mBasicInt(modelShell):
 
     @property
     def hourlyCapFactors(self):
-        return self.hourlyGeneratingCapacity / self.db['GeneratingCapacity']
+        return lpCompiler.broadcast(rc_pd(self.db['CapVariation'], self.db['id2hvt']), self.db['id2hvt']).droplevel('hvt')
 
     @property
     def hourlyLoad(self):
@@ -114,7 +114,7 @@ class mBasicInt_EmissionCap(modelShell):
 
     @property
     def hourlyCapFactors(self):
-        return self.hourlyGeneratingCapacity / self.db['GeneratingCapacity']
+        return lpCompiler.broadcast(rc_pd(self.db['CapVariation'], self.db['id2hvt']), self.db['id2hvt']).droplevel('hvt')
 
     @property
     def hourlyLoad(self):

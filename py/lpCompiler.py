@@ -278,8 +278,18 @@ class lpBlock:
 	def lp_b_ub(self):
 		return stackValues([self.get(('ub','b',k),attr='compiled') for k in self.allconstr['ub']]) if self.allconstr['ub'] else None
 
-	def dual_solution(self, sol):
-		return pd.Series(self.dual_solutionValues(sol), index = self.dual_solutionIndex)
+	# CHECKING LOWER/UPPER BOUNDS: Returns index where lower and upper bounds are equal.
+	# In these instances, the solver does not distinguish between the two, and may ascribe the dual variable to either.
+	# The following two functions ascribe the dual variable to the UPPER bound, if the two bounds are the same (scalar bounds)
+	def scalarDualLower(self, sol):
+		return np.where(self.lp_bounds[:,0]==self.lp_bounds[:,1], 0, sol['lower']['marginals'])
+
+	def scalarDualUpper(self, sol):
+		return np.where(self.lp_bounds[:,0]==self.lp_bounds[:,1], np.add(sol['lower']['marginals'], sol['upper']['marginals']), sol['upper']['marginals'])
+
+	# Get dual solutions:
+	def dual_solution(self, sol, scalarDual = True):
+		return pd.Series(self.dual_solutionValues(sol, scalarDual=scalarDual), index = self.dual_solutionIndex)
 
 	@property
 	def dual_solutionIndex(self):
@@ -292,5 +302,8 @@ class lpBlock:
 	def typeVector(self, ite):
 		return np.hstack([['eq']*len(ite[0]), ['ub']*len(ite[1]), ['l']*len(ite[2]), ['u']*len(ite[3])])
 
-	def dual_solutionValues(self, sol):
-		return np.hstack([sol['eqlin']['marginals'], sol['ineqlin']['marginals'], sol['lower']['marginals'], sol['upper']['marginals']])
+	def dual_solutionValues(self, sol, scalarDual = True):
+		if scalarDual:
+			return np.hstack([sol['eqlin']['marginals'], sol['ineqlin']['marginals'], self.scalarDualLower(sol), self.scalarDualUpper(sol)])
+		else:
+			return np.hstack([sol['eqlin']['marginals'], sol['ineqlin']['marginals'], sol['lower']['marginals'], sol['upper']['marginals']])

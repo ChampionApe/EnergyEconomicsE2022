@@ -19,6 +19,9 @@ def pdGb(x, by):
 def pdSum(x,sumby):
 	return pdGb(x, sumby).sum() if isinstance(x.index, pd.MultiIndex) else sum(x)	
 
+def pdNonZero(x):
+	return x.where(x!=0)
+
 def cartesianProductIndex(indices):
 	""" Return the cartesian product of pandas indices; assumes no overlap in levels of indices. """
 	ndarray = fastCartesianProduct([i.values for i in indices])

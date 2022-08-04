@@ -12,12 +12,13 @@ def updateFromGrids(db, grids, loop, l):
      for g in grids]
 
 def readSolutionLoop(sol, loop, i, extract, db):
-    return pd.concat(list(sol[:, i]), axis=1).set_axis(loop, axis=1).stack() if isinstance(db[extract[i]], pd.Series) else pd.Series(sol[:, i], index=loop)
+	return pd.concat(sol[i:len(loop)*len(extract):len(extract)], axis=1).set_axis(loop, axis=1).stack() if isinstance(db[extract[i]], pd.Series) else pd.Series(sol[i:len(loop)*len(extract):len(extract)], index=loop)
 
 class modelShell:
-    def __init__(self, db, blocks=None, method = 'highs', computeDual = True, **kwargs):
+    def __init__(self, db, blocks=None, method = 'highs', scalarDualAtUpper = True, computeDual = True, **kwargs):
         self.db = db
         self.method = method
+        self.scalarDualAtUpper = True
         self.computeDual = computeDual
         self.blocks = noneInit(blocks, lpCompiler.lpBlock(**kwargs))
         if hasattr(self, 'globalDomains'):
@@ -37,7 +38,7 @@ class modelShell:
         return {k: lpCompiler.vIndexVariable(fullVector, k, v) for k, v in self.blocks.alldomains.items()}
 
     def unloadDualSolution(self, sol):
-    	fullVector = self.blocks.dual_solution(sol)
+    	fullVector = self.blocks.dual_solution(sol, scalarDual = self.scalarDualAtUpper)
     	return self.unloadShadowValuesConstraints(fullVector) | self.unloadShadowValuesBounds(fullVector)
 
     def unloadShadowValuesBounds(self, fullVector):
@@ -53,8 +54,7 @@ class modelShell:
 
     def loopSolveExtract(self, loop, grids, extract, preSolve=None, initBlocks=None, postSolve=None, printSol=False):
         """ Update exogenous parameters in loop, solve, and extract selected variables """
-        n = np.array([self.loopSolveExtract_l(loop, grids, extract, l, preSolve=preSolve,
-                                              initBlocks=initBlocks, postSolve=postSolve, printSol=printSol) for l in loop], dtype=object)
+        n = list(itertools.chain.from_iterable((self.loopSolveExtract_l(loop, grids, extract, l, preSolve = preSolve, initBlocks = initBlocks, postSolve = postSolve, printSol = printSol) for l in loop)))
         return {extract[i]: readSolutionLoop(n, loop, i, extract, self.db) for i in range(len(extract))}
 
     def loopSolveExtract_l(self, loop, grids, extract, l, preSolve=None, initBlocks=None, postSolve=None, printSol=False):
