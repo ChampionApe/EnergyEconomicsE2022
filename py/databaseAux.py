@@ -20,7 +20,10 @@ def appIndexWithCopySeries(s, copyLevel, newLevel):
 	return s
 
 def appendIndexWithCopy(index, copyLevel, newLevel):
-	return pd.MultiIndex.from_frame(index.to_frame(index=False).assign(**{newLevel: index.get_level_values(copyLevel)}))
+	if is_iterable(copyLevel):
+		return pd.MultiIndex.from_frame(index.to_frame(index=False).assign(**{newLevel[i]: index.get_level_values(copyLevel[i]) for i in range(len(copyLevel))}))
+	else: 
+		return pd.MultiIndex.from_frame(index.to_frame(index=False).assign(**{newLevel: index.get_level_values(copyLevel)}))
 
 def grid(v0,vT,index,gridtype='linear',phi=1):
 	""" If v0, vT are 1d numpy arrays, returns 2d array. If scalars, returns 1d arrays. """

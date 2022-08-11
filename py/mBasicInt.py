@@ -13,6 +13,15 @@ def mc(db):
     """ Marginal costs in €/GJ """
     return pdSum((db['FuelMix'] * fuelCost(db)).dropna(), 'BFt').add(db['OtherMC'])
 
+def fuelConsumption(db):
+    return pdSum((db['Generation'] * db['FuelMix']).dropna(), ['h','id'])
+
+def plantEmissionIntensity(db):
+    return pdSum(db['FuelMix'] * db['EmissionIntensity'], 'BFt')
+
+def emissionsFuel(db):
+    return pdSum(fuelConsumption(db) * db['EmissionIntensity'], 'BFt')
+
 def fixedCosts(db):
     """ fixed operating and maintenance costs of installed capacity in 1000€. """
     return db['FOM']*db['GeneratingCapacity'] * len(db['h'])/8760
@@ -69,7 +78,7 @@ class mBasicInt(modelShell):
 
     @property
     def hourlyLoad(self):
-        return pdSum(self.db['LoadVariation'] * self.db['Load'], 'l')
+        return pdSum(self.db['LoadVariation'] * self.db['Load'], 'c')
 
     def preSolve(self, recomputeMC=False, **kwargs):
         if ('mc' not in self.db.symbols) or recomputeMC:
@@ -97,6 +106,8 @@ class mBasicInt(modelShell):
         if solution['status'] == 0:
             self.unloadToDb(solution)
             self.db['Welfare'] = -solution['fun']
+            self.db['FuelConsumption'] = fuelConsumption(self.db)
+            self.db['Emissions'] = emissionsFuel(self.db)
             self.db['capacityFactor'] = theoreticalCapacityFactor(self.db)
             self.db['capacityCosts'] = averageCapacityCosts(self.db)
             self.db['energyCosts'] = averageEnergyCosts(self.db)
@@ -118,7 +129,7 @@ class mBasicInt_EmissionCap(modelShell):
 
     @property
     def hourlyLoad(self):
-        return pdSum(self.db['LoadVariation'] * self.db['Load'], 'l')
+        return pdSum(self.db['LoadVariation'] * self.db['Load'], 'c')
 
     def preSolve(self, recomputeMC=False, **kwargs):
         if ('mc' not in self.db.symbols) or recomputeMC:
@@ -141,14 +152,78 @@ class mBasicInt_EmissionCap(modelShell):
                                  ]
                              }
                             ]
+        self.blocks['ub'] = [{'constrName': 'emissionsCap', 'b': self.db['CO2Cap'], 
+                            'A': [{'variableName': 'Generation', 'parameter': lpCompiler.broadcast(plantEmissionIntensity(self.db).xs('CO2',level='EmissionType'), self.db['h'])}
+                                 ]
+                             }]
+
 
     def postSolve(self, solution, **kwargs):
         if solution['status'] == 0:
             self.unloadToDb(solution)
             self.db['Welfare'] = -solution['fun']
+            self.db['FuelConsumption'] = fuelConsumption(self.db)
+            self.db['Emissions'] = emissionsFuel(self.db)
             self.db['capacityFactor'] = theoreticalCapacityFactor(self.db)
             self.db['capacityCosts'] = averageCapacityCosts(self.db)
             self.db['energyCosts'] = averageEnergyCosts(self.db)
             self.db['marginalSystemCosts'] = marginalSystemCosts(self.db)
-            self.db['averageMSC'] = meanMarginalSystemCost(self.db, self.db['HourlyDemand'])
+            self.db['marginalEconomicValue'] = marginalEconomicValue(self)
+
+class mBasicInt_RES(modelShell):
+    def __init__(self, db, blocks=None, **kwargs):
+        db.updateAlias(alias=[('h','h_alias')])
+        super().__init__(db, blocks=blocks, **kwargs)
+
+    @property
+    def hourlyGeneratingCapacity(self):
+        return (lpCompiler.broadcast(self.db['GeneratingCapacity'], self.db['id2hvt']) * self.db['CapVariation']).dropna().droplevel('hvt')
+
+    @property
+    def hourlyCapFactors(self):
+        return lpCompiler.broadcast(rc_pd(self.db['CapVariation'], self.db['id2hvt']), self.db['id2hvt']).droplevel('hvt')
+
+    @property
+    def hourlyLoad(self):
+        return pdSum(self.db['LoadVariation'] * self.db['Load'], 'c')
+
+    @property
+    def cleanIds(self):
+        s = (self.db['FuelMix'] * self.db['EmissionIntensity']).groupby('id').sum()
+        return s[s <= 0].index
+
+    @property
+    def globalDomains(self):
+        return {'Generation': pd.MultiIndex.from_product([self.db['h'], self.db['id']]),
+                'HourlyDemand': self.db['h'],
+                'equilibrium': self.db['h_alias']}
+
+    def preSolve(self, recomputeMC=False, **kwargs):
+        if ('mc' not in self.db.symbols) or recomputeMC:
+            self.db['mc'] = mc(self.db)
+
+    def initBlocks(self, **kwargs):
+        self.blocks['c'] = [{'variableName': 'Generation', 'parameter': lpCompiler.broadcast(self.db['mc'], self.db['h'])},
+                            {'variableName': 'HourlyDemand', 'parameter': -self.db['MWP_LoadShedding']}]
+        self.blocks['u'] = [{'variableName': 'Generation', 'parameter': self.hourlyGeneratingCapacity},
+                            {'variableName': 'HourlyDemand', 'parameter': self.hourlyLoad}]
+        self.blocks['eq'] = [{'constrName': 'equilibrium', 'b': None, 
+                            'A': [{'variableName': 'Generation', 'parameter'  : appIndexWithCopySeries(pd.Series(1, index = self.globalDomains['Generation']), 'h','h_alias')},
+                                  {'variableName': 'HourlyDemand', 'parameter': appIndexWithCopySeries(pd.Series(-1, index = self.globalDomains['HourlyDemand']), 'h','h_alias')}
+                                 ]
+                             }
+                            ]
+        self.blocks['ub'] = [{'constrName': 'RESCapConstraint', 'b': 0, 'A': [ {'variableName': 'Generation', 'parameter': -1, 'conditions': self.cleanIds,
+                                                                                'variableName': 'HourlyDemand', 'parameter': self.db['RESCap']}]}]
+
+    def postSolve(self, solution, **kwargs):
+        if solution['status'] == 0:
+            self.unloadToDb(solution)
+            self.db['Welfare'] = -solution['fun']
+            self.db['FuelConsumption'] = fuelConsumption(self.db)
+            self.db['Emissions'] = emissionsFuel(self.db)
+            self.db['capacityFactor'] = theoreticalCapacityFactor(self.db)
+            self.db['capacityCosts'] = averageCapacityCosts(self.db)
+            self.db['energyCosts'] = averageEnergyCosts(self.db)
+            self.db['marginalSystemCosts'] = marginalSystemCosts(self.db)
             self.db['marginalEconomicValue'] = marginalEconomicValue(self)

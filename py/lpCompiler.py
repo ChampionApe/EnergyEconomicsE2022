@@ -31,8 +31,11 @@ def broadcast(x,y,fill_value=0):
 	if getDomains(y):
 		if not getDomains(x):
 			return pd.Series(x, index = y)
-		elif set(getDomains(x)).intersection(getDomains(y)):
-			return pd.Series(0, index=y).add(x,fill_value=fill_value)
+		elif set(getDomains(x)).intersection(set(getDomains(y))):
+			if set(getDomains(x))-set(getDomains(y)):
+				return x.add(pd.Series(0, index = y), fill_value=fill_value)
+			else:
+				return pd.Series(0, index=y).add(x,fill_value=fill_value)
 		else:
 			return pd.Series(0, index = cartesianProductIndex([database.getIndex(x),y])).add(x,fill_value=fill_value)
 	else:
@@ -238,9 +241,11 @@ class lpBlock:
 	def broadcastAndSort_i(self, t, k, val=0):
 		return broadcast(self.get((t,k),attr='compiled') if k in self.getVariables_t(t,attr='compiled') else val, self.gIndex[k], fill_value = val).sort_index()
 
-	def broadcastAndSort_Ai(self, t, constr, k, bindex):
-		full = pd.Series(0, index = cartesianProductIndex((self.gIndex[k],bindex)))
-		return full.add(self.get((t,'A',constr,k),attr='compiled'),fill_value=0).sort_index() if k in self.getVariables_i(t,constr,attr='compiled') else full.sort_index()
+	def broadcastAndSort_Ai(self,t,constr,k,bindex):
+		if k in self.getVariables_i(t,constr,attr='compiled'):
+			return pd.DataFrame(0, index = self.gIndex[k], columns = bindex.get_level_values(f'_{t}index')).add(self.get((t,'A',constr,k),attr='compiled').droplevel(f'_{t}symbol').unstack(level=-1).fillna(0), fill_value=0)
+		else:
+			return pd.DataFrame(0, index = self.gIndex[k], columns = bindex.get_level_values(f'_{t}index'))
 
 	# 5: Methods to get the stacked numpy arrays:
 	def __call__(self, execute=None):
@@ -267,10 +272,10 @@ class lpBlock:
 		return np.vstack([self.lp_l, self.lp_u]).T
 	@property
 	def lp_A_eq(self):
-		return np.hstack([np.vstack([self.get(('eq','A',constr,k),attr='broadcasted').unstack(level=-1).values for k in self.allvars]) for constr in self.allconstr['eq']]).T if self.allconstr['eq'] else None
+		return np.hstack([np.vstack([self.get(('eq','A',constr,k),attr='broadcasted').values for k in self.allvars]) for constr in self.allconstr['eq']]).T if self.allconstr['eq'] else None
 	@property
 	def lp_A_ub(self):
-		return np.hstack([np.vstack([self.get(('ub','A',constr,k),attr='broadcasted').unstack(level=-1).values for k in self.allvars]) for constr in self.allconstr['ub']]).T if self.allconstr['ub'] else None
+		return np.hstack([np.vstack([self.get(('ub','A',constr,k),attr='broadcasted').values for k in self.allvars]) for constr in self.allconstr['ub']]).T if self.allconstr['ub'] else None
 	@property
 	def lp_b_eq(self):
 		return stackValues([self.get(('eq','b',k),attr='compiled') for k in self.allconstr['eq']]) if self.allconstr['eq'] else None
