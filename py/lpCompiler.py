@@ -5,7 +5,7 @@ from functools import reduce
 _stdLinProg = ('c', 'A_ub','b_ub','A_eq','b_eq','bounds')
 
 def emptyArrayIfEmpty(x):
-	return x if x else [np.array([])]
+	return [np.hstack(x)] if x else [np.array([])]
 
 def noneInitList(x,FallBackVal):
 	return FallBackVal if x is None else [x]

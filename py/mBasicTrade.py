@@ -1,6 +1,6 @@
 from _mixedTools import *
 from databaseAux import appIndexWithCopySeries
-from subsetPandas import rc_pd
+from subsetPandas import rc_pd, rc_AdjPd
 import lpCompiler
 from lpModels import modelShell
 _stdLinProg = ('c', 'A_ub', 'b_ub', 'A_eq', 'b_eq', 'bounds')
@@ -128,3 +128,76 @@ class mBasicTrade(modelShell):
             self.db['marginalSystemCosts'] = marginalSystemCosts(self.db)
             self.db['marginalEconomicValue'] = marginalEconomicValue(self)
             self.db['congestionRent'] = congestionRent(self.db)
+            self.db['meanConsumerPrice'] = meanMarginalSystemCost(self.db, self.db['HourlyDemand'])
+
+
+class mBasicTrade_EmissionCap(mBasicTrade):
+    def __init__(self, db, blocks=None, commonCap = True, **kwargs):
+        super().__init__(db, blocks=blocks, **kwargs)
+        self.commonCap = commonCap
+
+    def initBlocks(self, **kwargs):
+        self.blocks['c'] = [{'variableName': 'Generation', 'parameter': lpCompiler.broadcast(self.db['mc'], self.globalDomains['Generation'])},
+                            {'variableName': 'HourlyDemand', 'parameter': -self.db['MWP_LoadShedding']},
+                            {'variableName': 'Transmission', 'parameter': lpCompiler.broadcast(self.db['lineMC'], self.db['h'])}]
+        self.blocks['u'] = [{'variableName': 'Generation',   'parameter': lpCompiler.broadcast(self.hourlyGeneratingCapacity, self.globalDomains['Generation'])},
+                            {'variableName': 'HourlyDemand', 'parameter': self.hourlyLoad},
+                            {'variableName': 'Transmission', 'parameter': lpCompiler.broadcast(self.db['lineCapacity'], self.db['h'])}]
+        self.blocks['eq'] = [{'constrName': 'equilibrium', 'b': None, 
+                            'A': [
+                                    {'variableName': 'Generation', 'parameter'  : appIndexWithCopySeries(pd.Series(1, index = self.globalDomains['Generation']), ['g','h'],['g_alias2','h_alias'])},
+                                    {'variableName': 'HourlyDemand', 'parameter': appIndexWithCopySeries(pd.Series(-1, index = self.globalDomains['HourlyDemand']), ['g','h'],['g_alias2','h_alias'])},
+                                    {'variableName': 'Transmission', 'parameter': appIndexWithCopySeries(pd.Series(-1, index = self.globalDomains['Transmission']), ['g','h'],['g_alias2','h_alias'])},
+                                    {'variableName': 'Transmission', 'parameter': appIndexWithCopySeries(pd.Series(1-self.db['lineLoss'], index = self.globalDomains['Transmission']), ['g_alias','h'], ['g_alias2','h_alias'])}
+                                 ]
+                             }
+                            ]
+        if self.commonCap:
+            self.blocks['ub'] = [{'constrName': 'emissionsCap', 'b': pdSum(self.db['CO2Cap'], 'g'), 
+                                'A': [{'variableName': 'Generation', 'parameter': lpCompiler.broadcast(plantEmissionIntensity(self.db).xs('CO2',level='EmissionType'), self.globalDomains['Generation'])}]
+                                }]
+        else:
+            self.blocks['ub'] = [{'constrName': 'emissionsCap', 'b': rc_pd(self.db['CO2Cap'], alias={'g':'g_alias'}), 
+                                'A': [{'variableName': 'Generation', 'parameter': appIndexWithCopySeries(lpCompiler.broadcast(plantEmissionIntensity(self.db).xs('CO2',level='EmissionType'), self.globalDomains['Generation']),
+                                                                                                         'g','g_alias')}]
+                                }]
+
+
+class mBasicTrade_RES(mBasicTrade):
+    def __init__(self, db, blocks=None, commonCap = True, **kwargs):
+        super().__init__(db, blocks=blocks, **kwargs)
+        self.commonCap = commonCap
+
+    @property
+    def cleanIds(self):
+        s = (self.db['FuelMix'] * self.db['EmissionIntensity']).groupby('id').sum()
+        return s[s <= 0].index
+
+    def initBlocks(self, **kwargs):
+        self.blocks['c'] = [{'variableName': 'Generation', 'parameter': lpCompiler.broadcast(self.db['mc'], self.globalDomains['Generation'])},
+                            {'variableName': 'HourlyDemand', 'parameter': -self.db['MWP_LoadShedding']},
+                            {'variableName': 'Transmission', 'parameter': lpCompiler.broadcast(self.db['lineMC'], self.db['h'])}]
+        self.blocks['u'] = [{'variableName': 'Generation',   'parameter': lpCompiler.broadcast(self.hourlyGeneratingCapacity, self.globalDomains['Generation'])},
+                            {'variableName': 'HourlyDemand', 'parameter': self.hourlyLoad},
+                            {'variableName': 'Transmission', 'parameter': lpCompiler.broadcast(self.db['lineCapacity'], self.db['h'])}]
+        self.blocks['eq'] = [{'constrName': 'equilibrium', 'b': None, 
+                            'A': [
+                                    {'variableName': 'Generation', 'parameter'  : appIndexWithCopySeries(pd.Series(1, index = self.globalDomains['Generation']), ['g','h'],['g_alias2','h_alias'])},
+                                    {'variableName': 'HourlyDemand', 'parameter': appIndexWithCopySeries(pd.Series(-1, index = self.globalDomains['HourlyDemand']), ['g','h'],['g_alias2','h_alias'])},
+                                    {'variableName': 'Transmission', 'parameter': appIndexWithCopySeries(pd.Series(-1, index = self.globalDomains['Transmission']), ['g','h'],['g_alias2','h_alias'])},
+                                    {'variableName': 'Transmission', 'parameter': appIndexWithCopySeries(pd.Series(1-self.db['lineLoss'], index = self.globalDomains['Transmission']), ['g_alias','h'], ['g_alias2','h_alias'])}
+                                 ]
+                             }
+                            ]
+        if self.commonCap:
+            self.blocks['ub'] = [{'constrName': 'RESCapConstraint', 'b': 0, 'A': [ {'variableName': 'Generation', 'parameter': -1, 'conditions': self.cleanIds,
+                                                                                    'variableName': 'HourlyDemand', 'parameter': self.db['RESCap'].mean()}]}]
+        else:
+            self.blocks['ub'] = [{'constrName': 'RESCapConstraint', 'b': pd.Series(0, index = self.db['RESCap'].index), 
+                                    'A': [  {'variableName': 'Generation', 'parameter': 
+                                                appIndexWithCopySeries(pd.Series(-1, index = self.globalDomains['Generation']), 'g','g_alias'), 'conditions': self.cleanIds},
+                                            {'variableName': 'HourlyDemand', 'parameter': 
+                                                appIndexWithCopySeries(lpCompiler.broadcast(self.db['RESCap'], self.globalDomains['HourlyDemand']), 'g', 'g_alias')}
+                                         ]
+                                 }
+                                ]

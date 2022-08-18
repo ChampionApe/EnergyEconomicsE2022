@@ -213,8 +213,8 @@ class mBasicInt_RES(modelShell):
                                  ]
                              }
                             ]
-        self.blocks['ub'] = [{'constrName': 'RESCapConstraint', 'b': 0, 'A': [ {'variableName': 'Generation', 'parameter': -1, 'conditions': self.cleanIds,
-                                                                                'variableName': 'HourlyDemand', 'parameter': self.db['RESCap']}]}]
+        self.blocks['ub'] = [{'constrName': 'RESCapConstraint', 'b': 0, 'A': [  {'variableName': 'Generation', 'parameter': -1, 'conditions': self.cleanIds},
+                                                                                {'variableName': 'HourlyDemand', 'parameter': self.db['RESCap']}]}]
 
     def postSolve(self, solution, **kwargs):
         if solution['status'] == 0:
