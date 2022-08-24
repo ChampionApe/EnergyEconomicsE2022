@@ -1,5 +1,5 @@
 from _mixedTools import *
-from databaseAux import appIndexWithCopySeries
+from databaseAux import appIndexWithCopySeries, offsetLevelS
 from subsetPandas import rc_pd, rc_AdjPd
 import lpCompiler
 from lpModels import modelShell
@@ -97,7 +97,7 @@ class mSimple(modelShell):
                 'equilibrium_H': pd.MultiIndex.from_product([self.db['g_alias2'], self.db['h_alias']]),
                 'PowerToHeat': cartesianProductIndex([rc_AdjPd(getTechs(['BP','HP'],self.db), alias = {'id':'id_alias'}), self.db['h_alias']])}
 
-    def initBlocks(self, **kwargs):  
+    def initBlocks(self, **kwargs):
         self.blocks['c'] = [{'variableName': 'Generation_E', 'parameter': lpCompiler.broadcast(self.db['mc'], self.globalDomains['Generation_E']), 'conditions': getTechs(['standard_E','BP'],self.db)},
                             {'variableName': 'Generation_H', 'parameter': lpCompiler.broadcast(self.db['mc'], self.globalDomains['Generation_H']), 'conditions': getTechs(['standard_H','HP'],self.db)},
                             {'variableName': 'HourlyDemand_E', 'parameter': -self.db['MWP_LoadShedding_E']},
@@ -123,7 +123,7 @@ class mSimple(modelShell):
                                  ]},
                             {'constrName': 'PowerToHeat', 'b': None,
                             'A': [{'variableName': 'Generation_E', 'parameter': appIndexWithCopySeries(pd.Series(1, index = self.globalDomains['Generation_E']), ['id','h'], ['id_alias','h_alias']), 'conditions': getTechs(['BP','HP'],self.db)},
-                                  {'variableName': 'Generation_H', 'parameter': appIndexWithCopySeries(lpCompiler.broadcast(self.db['E2H'], self.globalDomains['Generation_H']), ['id','h'],['id_alias','h_alias']), 'conditions': getTechs(['BP','HP'],self.db)}
+                                  {'variableName': 'Generation_H', 'parameter': appIndexWithCopySeries(lpCompiler.broadcast(-self.db['E2H'], self.globalDomains['Generation_H']), ['id','h'],['id_alias','h_alias']), 'conditions': getTechs(['BP','HP'],self.db)}
                                   ]
                             }
                            ]

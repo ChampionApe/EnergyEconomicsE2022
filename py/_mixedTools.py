@@ -24,8 +24,11 @@ def pdNonZero(x):
 
 def cartesianProductIndex(indices):
 	""" Return the cartesian product of pandas indices; assumes no overlap in levels of indices. """
-	ndarray = fastCartesianProduct([i.values for i in indices])
-	return pd.MultiIndex.from_arrays(concatArrays(ndarray, indices).T, names = [n for l in indices for n in l.names])
+	if any((i.empty for i in indices)):
+		return pd.MultiIndex.from_tuples([], names = [n for l in indices for n in l.names]) 
+	else: 
+		ndarray = fastCartesianProduct([i.values for i in indices])
+		return pd.MultiIndex.from_arrays(concatArrays(ndarray, indices).T, names = [n for l in indices for n in l.names])
 
 # Auxiliary function for cartesianProductIndex
 def fastCartesianProduct(arrays):

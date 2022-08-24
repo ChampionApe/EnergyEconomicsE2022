@@ -25,6 +25,26 @@ def appendIndexWithCopy(index, copyLevel, newLevel):
 	else: 
 		return pd.MultiIndex.from_frame(index.to_frame(index=False).assign(**{newLevel: index.get_level_values(copyLevel)}))
 
+def rollLevelS(s, level, offset):
+	s.index = rollLevel(s.index, level, offset)
+	return s
+
+def rollLevel(index, level, offset):
+	if is_iterable(level):
+		return index.set_levels([np.roll(index.levels[index.names.index(level[i])],offset[i]) for i in range(len(level))], level = level)
+	else:
+		return index.set_levels(np.roll(index.levels[index.names.index(level)], offset), level = level)
+
+def offsetLevelS(s, level, offset):
+	s.index = offsetLevel(s.index, level, offset)
+	return s
+
+def offsetLevel(index, level, offset):
+	if is_iterable(level):
+		return index.set_levels([index.levels[index.names.index(level[i])]+offset[i] for i in range(len(level))], level = level)
+	else:
+		return index.set_levels(index.levels[index.names.index(level)]+offset, level = level)
+
 def grid(v0,vT,index,gridtype='linear',phi=1):
 	""" If v0, vT are 1d numpy arrays, returns 2d array. If scalars, returns 1d arrays. """
 	if gridtype == 'linear':

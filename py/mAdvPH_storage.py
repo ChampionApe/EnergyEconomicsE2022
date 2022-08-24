@@ -1,5 +1,5 @@
 from _mixedTools import *
-from databaseAux import appIndexWithCopySeries
+from databaseAux import appIndexWithCopySeries, offsetLevelS, rollLevelS
 from subsetPandas import rc_pd, rc_AdjPd
 import lpCompiler
 from lpModels import modelShell
@@ -42,8 +42,15 @@ def getTechs(techs, db):
     """ Subset on tech types"""
     return rc_pd(db['id2modelTech2tech'].droplevel('tech'), pd.Index(techs if is_iterable(techs) else [techs], name = 'modelTech')).droplevel('modelTech')
 
+def getTechs_i(techs, db):
+    """ Subset on tech types"""
+    return rc_pd(db['id2modelTech2tech'].droplevel('modelTech'), pd.Index(techs if is_iterable(techs) else [techs], name = 'tech')).droplevel('tech')
+
 def subsetIdsTech(x, techs, db):
     return rc_pd(x, getTechs(techs,db))
+
+def subsetIdsTech_i(x, techs, db):
+    return rc_pd(x, getTechs_i(techs,db))
 
 class mSimple(modelShell):
     """ This class includes 
@@ -63,7 +70,7 @@ class mSimple(modelShell):
         return ('standard_E','BP','HP')
     @property
     def modelTech_H(self):
-        return ('standard_H','BP','HP')    
+        return ('standard_H','BP','HP')
     @property
     def hourlyCapFactors(self):
         return lpCompiler.broadcast(self.db['CapVariation'], self.db['id2hvt']).droplevel('hvt')
@@ -90,25 +97,33 @@ class mSimple(modelShell):
     def globalDomains(self):
         return {'Generation_E': cartesianProductIndex([subsetIdsTech(self.db['id2g'], self.modelTech_E, self.db), self.db['h']]), 
                 'Generation_H': cartesianProductIndex([subsetIdsTech(self.db['id2g'], self.modelTech_H, self.db), self.db['h']]),
+                'discharge_H' : cartesianProductIndex([subsetIdsTech(self.db['id2g'], 'HS', self.db), self.db['h']]),
+                'charge_H'    : cartesianProductIndex([subsetIdsTech(self.db['id2g'], 'HS', self.db), self.db['h']]),
+                'stored_H'    : cartesianProductIndex([subsetIdsTech(self.db['id2g'], 'HS', self.db), self.db['h']]),
                 'HourlyDemand_E': pd.MultiIndex.from_product([self.db['g'], self.db['h']]),
                 'HourlyDemand_H': pd.MultiIndex.from_product([self.db['g'], self.db['h']]),
                 'Transmission_E': cartesianProductIndex([self.db['gConnected'],self.db['h']]),
                 'equilibrium_E': pd.MultiIndex.from_product([self.db['g_alias2'], self.db['h_alias']]),
                 'equilibrium_H': pd.MultiIndex.from_product([self.db['g_alias2'], self.db['h_alias']]),
-                'PowerToHeat': cartesianProductIndex([rc_AdjPd(getTechs(['BP','HP'],self.db), alias = {'id':'id_alias'}), self.db['h_alias']])}
+                'PowerToHeat': cartesianProductIndex([rc_AdjPd(getTechs(['BP','HP'],self.db), alias = {'id':'id_alias'}), self.db['h_alias']]),
+                'LawOfMotion_H': cartesianProductIndex([rc_AdjPd(getTechs('HS',self.db), alias = {'id':'id_alias'}), self.db['h_alias']])}
 
     def initBlocks(self, **kwargs):
         self.blocks['c'] = [{'variableName': 'Generation_E', 'parameter': lpCompiler.broadcast(self.db['mc'], self.globalDomains['Generation_E']), 'conditions': getTechs(['standard_E','BP'],self.db)},
                             {'variableName': 'Generation_H', 'parameter': lpCompiler.broadcast(self.db['mc'], self.globalDomains['Generation_H']), 'conditions': getTechs(['standard_H','HP'],self.db)},
                             {'variableName': 'HourlyDemand_E', 'parameter': -self.db['MWP_LoadShedding_E']},
                             {'variableName': 'HourlyDemand_H', 'parameter': -self.db['MWP_LoadShedding_H']},
-                            {'variableName': 'Transmission_E', 'parameter': lpCompiler.broadcast(self.db['lineMC'], self.db['h'])}
+                            {'variableName': 'Transmission_E', 'parameter': lpCompiler.broadcast(self.db['lineMC'], self.db['h'])},
+                            {'variableName': 'discharge_H', 'parameter': lpCompiler.broadcast(self.db['mc'], self.globalDomains['discharge_H']), 'conditions': getTechs('HS',self.db)},
+                            {'variableName': 'charge_H',    'parameter': lpCompiler.broadcast(self.db['mc'], self.globalDomains['charge_H']),    'conditions': getTechs('HS',self.db)}
                            ]
         self.blocks['u'] = [{'variableName': 'Generation_E', 'parameter': lpCompiler.broadcast(self.hourlyGeneratingCap_E, self.globalDomains['Generation_E']), 'conditions': getTechs(['standard_E','BP'],self.db)},
                             {'variableName': 'Generation_H', 'parameter': lpCompiler.broadcast(self.hourlyGeneratingCap_H, self.globalDomains['Generation_H']), 'conditions': getTechs(['standard_H','HP'],self.db)},
                             {'variableName': 'HourlyDemand_E', 'parameter': self.hourlyLoad_E},
                             {'variableName': 'HourlyDemand_H', 'parameter': self.hourlyLoad_H},
-                            {'variableName': 'Transmission_E', 'parameter': lpCompiler.broadcast(self.db['lineCapacity'], self.db['h'])}
+                            {'variableName': 'Transmission_E', 'parameter': lpCompiler.broadcast(self.db['lineCapacity'], self.db['h'])},
+                            {'variableName': 'discharge_H', 'parameter': lpCompiler.broadcast(self.db['GeneratingCap_H'], self.globalDomains['discharge_H']), 'conditions': getTechs('HS',self.db)},
+                            {'variableName': 'charge_H',    'parameter': lpCompiler.broadcast(self.db['chargeCap_H'], self.globalDomains['charge_H']), 'conditions': getTechs('HS',self.db)}
                            ]
         self.blocks['l'] = [{'variableName': 'Generation_E', 'parameter': -np.inf, 'conditions': getTechs('HP',self.db)}]
         self.blocks['eq']= [{'constrName': 'equilibrium_E', 'b': None,
@@ -119,11 +134,20 @@ class mSimple(modelShell):
                                  ]},
                             {'constrName': 'equilibrium_H', 'b':None,
                             'A': [{'variableName': 'Generation_H', 'parameter': appIndexWithCopySeries(pd.Series(1, index = self.globalDomains['Generation_H']), ['g','h'],['g_alias2','h_alias'])},
-                                  {'variableName': 'HourlyDemand_H', 'parameter': appIndexWithCopySeries(pd.Series(-1, index = self.globalDomains['HourlyDemand_H']), ['g','h'],['g_alias2','h_alias'])}
+                                  {'variableName': 'HourlyDemand_H', 'parameter': appIndexWithCopySeries(pd.Series(-1, index = self.globalDomains['HourlyDemand_H']), ['g','h'],['g_alias2','h_alias'])},
+                                  {'variableName': 'discharge_H', 'parameter': appIndexWithCopySeries(pd.Series(1, index = self.globalDomains['discharge_H']), ['g','h'], ['g_alias2','h_alias'])},
+                                  {'variableName': 'charge_H', 'parameter': appIndexWithCopySeries(pd.Series(-1, index = self.globalDomains['charge_H']), ['g','h'], ['g_alias2','h_alias'])}
                                  ]},
                             {'constrName': 'PowerToHeat', 'b': None,
                             'A': [{'variableName': 'Generation_E', 'parameter': appIndexWithCopySeries(pd.Series(1, index = self.globalDomains['Generation_E']), ['id','h'], ['id_alias','h_alias']), 'conditions': getTechs(['BP','HP'],self.db)},
-                                  {'variableName': 'Generation_H', 'parameter': appIndexWithCopySeries(lpCompiler.broadcast(self.db['E2H'], self.globalDomains['Generation_H']), ['id','h'],['id_alias','h_alias']), 'conditions': getTechs(['BP','HP'],self.db)}
+                                  {'variableName': 'Generation_H', 'parameter': appIndexWithCopySeries(lpCompiler.broadcast(-self.db['E2H'], self.globalDomains['Generation_H']), ['id','h'],['id_alias','h_alias']), 'conditions': getTechs(['BP','HP'],self.db)}
+                                  ]
+                            },
+                            {'constrName': 'LawOfMotion_H', 'b': None,
+                            'A' : [{'variableName': 'stored_H', 'parameter': appIndexWithCopySeries(pd.Series(1, index = self.globalDomains['stored_H']), ['id','h'], ['id_alias','h_alias'])},
+                                   {'variableName': 'stored_H', 'parameter': rollLevelS(appIndexWithCopySeries(lpCompiler.broadcast(self.db['selfDischarge']-1, self.globalDomains['stored_H']), ['id','h'], ['id_alias','h_alias']), 'h',1), 'conditions': getTechs('HS', self.db)},
+                                   {'variableName': 'discharge_H', 'parameter': appIndexWithCopySeries(lpCompiler.broadcast(1/self.db['effD'], self.globalDomains['stored_H']), ['id','h'], ['id_alias','h_alias']), 'conditions': getTechs('HS',self.db)},
+                                   {'variableName': 'charge_H',    'parameter': appIndexWithCopySeries(lpCompiler.broadcast(-self.db['effC'] , self.globalDomains['stored_H']), ['id','h'], ['id_alias','h_alias']), 'conditions': getTechs('HS',self.db)}
                                   ]
                             }
                            ]
