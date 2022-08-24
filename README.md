@@ -5,3 +5,9 @@ A few comments on the structure:
 - Models are written as Python classes stored in the "py" folder. 
 - Each model has a short, technical documentation in a notebook "M_X.ipynb" with X being the specific model.
 - Exercises that interact with the model classes are stored as "Ei_Problem.ipynb" with i being the specific exercise. Suggested solutions to the exercises can be found in "Ei_SolutionGuide.ipynb".
+- The model classes are getting progressingly more complex in the following order:
+  1. ```mBasic```
+  2. ```mBasicInt```
+  3. ```mBasicTrade```
+  4. ```mAdvPH```
+  5. ```mAdvPH_storage```
