@@ -63,7 +63,7 @@ def marginalEconomicRevenue(model):
 def marginalEconomicValue(model):
     return - pdSum(model.db['λ_Generation'].xs('u',level='_type') * model.hourlyCapFactors, 'h').add( 1000 * model.db['FOM'] * len(model.db['h'])/8760, fill_value = 0)
 
-class mBasicInt(modelShell):
+class mSimple(modelShell):
     def __init__(self, db, blocks=None, **kwargs):
         db.updateAlias(alias=[('h','h_alias')])
         super().__init__(db, blocks=blocks, **kwargs)
@@ -114,32 +114,10 @@ class mBasicInt(modelShell):
             self.db['marginalSystemCosts'] = marginalSystemCosts(self.db)
             self.db['marginalEconomicValue'] = marginalEconomicValue(self)
 
-class mBasicInt_EmissionCap(modelShell):
+class mEmissionCap(mSimple):
     def __init__(self, db, blocks=None, **kwargs):
         db.updateAlias(alias=[('h','h_alias')])
         super().__init__(db, blocks=blocks, **kwargs)
-
-    @property
-    def hourlyGeneratingCapacity(self):
-        return (lpCompiler.broadcast(self.db['GeneratingCapacity'], self.db['id2hvt']) * self.db['CapVariation']).dropna().droplevel('hvt')
-
-    @property
-    def hourlyCapFactors(self):
-        return lpCompiler.broadcast(rc_pd(self.db['CapVariation'], self.db['id2hvt']), self.db['id2hvt']).droplevel('hvt')
-
-    @property
-    def hourlyLoad(self):
-        return pdSum(self.db['LoadVariation'] * self.db['Load'], 'c')
-
-    def preSolve(self, recomputeMC=False, **kwargs):
-        if ('mc' not in self.db.symbols) or recomputeMC:
-            self.db['mc'] = mc(self.db)
-
-    @property
-    def globalDomains(self):
-        return {'Generation': pd.MultiIndex.from_product([self.db['h'], self.db['id']]),
-                'HourlyDemand': self.db['h'],
-                'equilibrium': self.db['h_alias']}
 
     def initBlocks(self, **kwargs):
         self.blocks['c'] = [{'variableName': 'Generation', 'parameter': lpCompiler.broadcast(self.db['mc'], self.db['h'])},
@@ -157,50 +135,15 @@ class mBasicInt_EmissionCap(modelShell):
                                  ]
                              }]
 
-
-    def postSolve(self, solution, **kwargs):
-        if solution['status'] == 0:
-            self.unloadToDb(solution)
-            self.db['Welfare'] = -solution['fun']
-            self.db['FuelConsumption'] = fuelConsumption(self.db)
-            self.db['Emissions'] = emissionsFuel(self.db)
-            self.db['capacityFactor'] = theoreticalCapacityFactor(self.db)
-            self.db['capacityCosts'] = averageCapacityCosts(self.db)
-            self.db['energyCosts'] = averageEnergyCosts(self.db)
-            self.db['marginalSystemCosts'] = marginalSystemCosts(self.db)
-            self.db['marginalEconomicValue'] = marginalEconomicValue(self)
-
-class mBasicInt_RES(modelShell):
+class mRES(mSimple):
     def __init__(self, db, blocks=None, **kwargs):
         db.updateAlias(alias=[('h','h_alias')])
         super().__init__(db, blocks=blocks, **kwargs)
 
     @property
-    def hourlyGeneratingCapacity(self):
-        return (lpCompiler.broadcast(self.db['GeneratingCapacity'], self.db['id2hvt']) * self.db['CapVariation']).dropna().droplevel('hvt')
-
-    @property
-    def hourlyCapFactors(self):
-        return lpCompiler.broadcast(rc_pd(self.db['CapVariation'], self.db['id2hvt']), self.db['id2hvt']).droplevel('hvt')
-
-    @property
-    def hourlyLoad(self):
-        return pdSum(self.db['LoadVariation'] * self.db['Load'], 'c')
-
-    @property
     def cleanIds(self):
         s = (self.db['FuelMix'] * self.db['EmissionIntensity']).groupby('id').sum()
         return s[s <= 0].index
-
-    @property
-    def globalDomains(self):
-        return {'Generation': pd.MultiIndex.from_product([self.db['h'], self.db['id']]),
-                'HourlyDemand': self.db['h'],
-                'equilibrium': self.db['h_alias']}
-
-    def preSolve(self, recomputeMC=False, **kwargs):
-        if ('mc' not in self.db.symbols) or recomputeMC:
-            self.db['mc'] = mc(self.db)
 
     def initBlocks(self, **kwargs):
         self.blocks['c'] = [{'variableName': 'Generation', 'parameter': lpCompiler.broadcast(self.db['mc'], self.db['h'])},
@@ -216,14 +159,3 @@ class mBasicInt_RES(modelShell):
         self.blocks['ub'] = [{'constrName': 'RESCapConstraint', 'b': 0, 'A': [  {'variableName': 'Generation', 'parameter': -1, 'conditions': self.cleanIds},
                                                                                 {'variableName': 'HourlyDemand', 'parameter': self.db['RESCap']}]}]
 
-    def postSolve(self, solution, **kwargs):
-        if solution['status'] == 0:
-            self.unloadToDb(solution)
-            self.db['Welfare'] = -solution['fun']
-            self.db['FuelConsumption'] = fuelConsumption(self.db)
-            self.db['Emissions'] = emissionsFuel(self.db)
-            self.db['capacityFactor'] = theoreticalCapacityFactor(self.db)
-            self.db['capacityCosts'] = averageCapacityCosts(self.db)
-            self.db['energyCosts'] = averageEnergyCosts(self.db)
-            self.db['marginalSystemCosts'] = marginalSystemCosts(self.db)
-            self.db['marginalEconomicValue'] = marginalEconomicValue(self)

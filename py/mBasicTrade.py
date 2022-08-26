@@ -70,7 +70,7 @@ def priceDifferences(db):
 def congestionRent(db):
     return priceDifferences(db) * db['Transmission']
 
-class mBasicTrade(modelShell):
+class mSimple(modelShell):
     def __init__(self, db, blocks=None, **kwargs):
         db.updateAlias(alias=[('h','h_alias'), ('g','g_alias'),('g','g_alias2')])
         db['gConnected'] = db['lineCapacity'].index
@@ -131,7 +131,7 @@ class mBasicTrade(modelShell):
             self.db['meanConsumerPrice'] = meanMarginalSystemCost(self.db, self.db['HourlyDemand'])
 
 
-class mBasicTrade_EmissionCap(mBasicTrade):
+class mEmissionCap(mSimple):
     def __init__(self, db, blocks=None, commonCap = True, **kwargs):
         super().__init__(db, blocks=blocks, **kwargs)
         self.commonCap = commonCap
@@ -163,7 +163,7 @@ class mBasicTrade_EmissionCap(mBasicTrade):
                                 }]
 
 
-class mBasicTrade_RES(mBasicTrade):
+class mRES(mSimple):
     def __init__(self, db, blocks=None, commonCap = True, **kwargs):
         super().__init__(db, blocks=blocks, **kwargs)
         self.commonCap = commonCap

@@ -20,7 +20,7 @@ def emissionsFuel(db, sumOver='BFt'):
 def plantEmissionIntensity(db):
     return (db['FuelMix'] * db['EmissionIntensity']).groupby('id').sum()
 
-class mBasic(modelShell):
+class mSimple(modelShell):
     def __init__(self, db, blocks=None, **kwargs):
         super().__init__(db, blocks=blocks, **kwargs)
 
@@ -49,21 +49,9 @@ class mBasic(modelShell):
             self.db['Emissions'] = emissionsFuel(self.db)
 
 
-class mBasic_EmissionCap(modelShell):
+class mEmissionCap(mSimple):
     def __init__(self, db, blocks=None, **kwargs):
         super().__init__(db, blocks=blocks, **kwargs)
-
-    def preSolve(self, recomputeMC=False, **kwargs):
-        if ('mc' not in self.db.symbols) or recomputeMC:
-            self.db['mc'] = mc(self.db)
-
-    @property
-    def globalDomains(self):
-        return {'Generation': self.db['id']}
-
-    @property
-    def getLoad(self):
-        return sum(self.db['Load']) if is_iterable(self.db['Load']) else self.db['Load']
 
     def initBlocks(self, **kwargs):
         self.blocks['c'] = [{'variableName': 'Generation', 'parameter': self.db['mc']}]
@@ -71,29 +59,9 @@ class mBasic_EmissionCap(modelShell):
         self.blocks['eq'] = [{'constrName': 'equilibrium', 'b': self.getLoad, 'A': [{'variableName': 'Generation', 'parameter': 1}]}]
         self.blocks['ub'] = [{'constrName': 'emissionsCap', 'b': self.db['CO2Cap'], 'A': [{'variableName': 'Generation', 'parameter': plantEmissionIntensity(self.db)}]}]
 
-    def postSolve(self, solution, **kwargs):
-        if solution['status'] == 0:
-            self.unloadToDb(solution)
-            self.db['SystemCosts'] = solution['fun']
-            self.db['FuelConsumption'] = fuelConsumption(self.db)
-            self.db['Emissions'] = emissionsFuel(self.db)
-
-
-class mBasic_RES(modelShell):
+class mRES(mSimple):
     def __init__(self, db, blocks=None, **kwargs):
         super().__init__(db, blocks=blocks, **kwargs)
-
-    def preSolve(self, recomputeMC=False, **kwargs):
-        if ('mc' not in self.db.symbols) or recomputeMC:
-            self.db['mc'] = mc(self.db)
-
-    @property
-    def globalDomains(self):
-        return {'Generation': self.db['id']}
-
-    @property
-    def getLoad(self):
-        return sum(self.db['Load']) if is_iterable(self.db['Load']) else self.db['Load']
 
     @property
     def cleanIds(self):
@@ -105,10 +73,3 @@ class mBasic_RES(modelShell):
         self.blocks['u'] = [{'variableName': 'Generation', 'parameter': self.db['GeneratingCapacity']}]
         self.blocks['eq'] = [{'constrName': 'equilibrium', 'b': self.getLoad, 'A': [{'variableName': 'Generation', 'parameter': 1}]}]
         self.blocks['ub'] = [{'constrName': 'RESCapConstraint', 'b': -self.db['RESCap']*self.getLoad, 'A': [{'variableName': 'Generation', 'parameter': -1, 'conditions': self.cleanIds}]}]
-
-    def postSolve(self, solution, **kwargs):
-        if solution['status'] == 0:
-            self.unloadToDb(solution)
-            self.db['SystemCosts'] = solution['fun']
-            self.db['FuelConsumption'] = fuelConsumption(self.db)
-            self.db['Emissions'] = emissionsFuel(self.db)
