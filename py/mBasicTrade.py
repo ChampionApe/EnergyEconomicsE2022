@@ -190,8 +190,8 @@ class mRES(mSimple):
                              }
                             ]
         if self.commonCap:
-            self.blocks['ub'] = [{'constrName': 'RESCapConstraint', 'b': 0, 'A': [ {'variableName': 'Generation', 'parameter': -1, 'conditions': self.cleanIds,
-                                                                                    'variableName': 'HourlyDemand', 'parameter': self.db['RESCap'].mean()}]}]
+            self.blocks['ub'] = [{'constrName': 'RESCapConstraint', 'b': 0, 'A': [ {'variableName': 'Generation', 'parameter': -1, 'conditions': self.cleanIds},
+                                                                                   {'variableName': 'HourlyDemand', 'parameter': self.db['RESCap'].mean()}]}]
         else:
             self.blocks['ub'] = [{'constrName': 'RESCapConstraint', 'b': pd.Series(0, index = self.db['RESCap'].index), 
                                     'A': [  {'variableName': 'Generation', 'parameter': 
