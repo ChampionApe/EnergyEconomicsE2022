@@ -1,4 +1,5 @@
 from _mixedTools import *
+from subsetPandas import rc_pd
 import database, pandas as pd, numpy as np
 
 def readSets(db, types = None):

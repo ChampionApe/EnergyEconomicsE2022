@@ -27,11 +27,12 @@ def reorderStd(v, order=None):
 
 # 1: Broadcasting:
 def broadcast(x,y,fill_value=0):
-	""" y is a index or None, x is a scalar or series """
+	""" y is a index or None, x is a scalar or series."""
 	if getDomains(y):
 		if not getDomains(x):
 			return pd.Series(x, index = y)
 		elif set(getDomains(x)).intersection(set(getDomains(y))):
+			# return pd.merge(x.to_frame('x'), pd.Series(index = y, dtype='object',name='x'), left_index = True, right_index = True, how = 'left')['x_x']
 			if set(getDomains(x))-set(getDomains(y)):
 				return x.add(pd.Series(0, index = y), fill_value=fill_value)
 			else:
@@ -40,6 +41,8 @@ def broadcast(x,y,fill_value=0):
 			return pd.Series(0, index = cartesianProductIndex([database.getIndex(x),y])).add(x,fill_value=fill_value)
 	else:
 		return x
+def adHocMerge(x,y):
+	return pd.merge(x.rename('x'), pd.Series(0, index = y).rename('y'), left_index = True, right_index = True).dropna().sum(axis=1)
 
 def bcAdd(x,y,fill_value=0):
 	""" Use broadcasting to robustly add two variables, including if the two are scalars. """
