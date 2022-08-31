@@ -13,4 +13,4 @@ A few comments on the structure:
   5. ```mBasicPH_storage```
 
 ## Installation guide:
-The models require installation of Python (e.g. through *Anaconda*), some type of git tool (e.g. *Github Desktop*, Git, Tortoise), and an editor for python code (e.g. *VSCode* or Sublime).
+The models require installation of Python (e.g. through *Anaconda*), some type of git tool (e.g. *Github Desktop*, Git, Tortoise), and an editor for python code (e.g. *VSCode* or Sublime). In general, the https://numeconcopenhagen.netlify.app/guides/
