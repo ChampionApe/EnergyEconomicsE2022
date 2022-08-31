@@ -15,3 +15,6 @@ A few comments on the structure:
 ## Installation guide:
 The models require installation of Python (e.g. through *Anaconda*), some type of git tool (e.g. *Github Desktop*, Git, Tortoise), and an editor for python code (e.g. *VSCode* or Sublime). The course *Introduction to Programming and Numerical Analysis* provides some pretty detailed guides for setting up Python and VSCode: https://numeconcopenhagen.netlify.app/guides/. We do, however, rely on different packages in this course, so you will need to supplement the installation with a few extra steps.
 
+#### Requirements (after installation):
+* Open "Anaconda Prompt" and write: ```conda install jupyterlab nodejs pandas openpyxl scipy```.
+* Also from "Anaconda Prompt": ```pip install seaborn```.
