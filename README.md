@@ -11,3 +11,5 @@ A few comments on the structure:
   3. ```mBasicTrade```
   4. ```mBasicPH```
   5. ```mBasicPH_storage```
+
+# Installation guide:
