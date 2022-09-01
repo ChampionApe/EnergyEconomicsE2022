@@ -27,7 +27,7 @@ def theoreticalCapacityFactor(db):
     return pdSum((subsetIdsTech(db['Generation_E'], ('standard_E','BP'), db) / pdNonZero(len(db['h']) * db['GeneratingCap_E'])).dropna(), 'h').droplevel('g')
 
 def marginalSystemCosts(db,market):
-    return rc_AdjPd(db[f'λ_equilibrium_{market}'], alias={'h_alias':'h', 'g_alias2': 'g'}).droplevel('_type')
+    return -rc_AdjPd(db[f'λ_equilibrium_{market}'], alias={'h_alias':'h', 'g_alias2': 'g'}).droplevel('_type')
 
 def meanMarginalSystemCost(db, var, market):
     return pdSum( (var * marginalSystemCosts(db,market)) / pdNonZero(pdSum(var, 'h')), 'h')
@@ -42,8 +42,15 @@ def getTechs(techs, db):
     """ Subset on tech types"""
     return rc_pd(db['id2modelTech2tech'].droplevel('tech'), pd.Index(techs if is_iterable(techs) else [techs], name = 'modelTech')).droplevel('modelTech')
 
+def getTechs_i(techs, db):
+    """ Subset on tech types"""
+    return rc_pd(db['id2modelTech2tech'].droplevel('modelTech'), pd.Index(techs if is_iterable(techs) else [techs], name = 'tech')).droplevel('tech')
+
 def subsetIdsTech(x, techs, db):
     return rc_pd(x, getTechs(techs,db))
+
+def subsetIdsTech_i(x, techs, db):
+    return rc_pd(x, getTechs_i(techs,db))
 
 class mSimple(modelShell):
     """ This class includes 
@@ -111,21 +118,20 @@ class mSimple(modelShell):
                             {'variableName': 'Transmission_E', 'parameter': lpCompiler.broadcast(self.db['lineCapacity'], self.db['h'])}
                            ]
         self.blocks['l'] = [{'variableName': 'Generation_E', 'parameter': -np.inf, 'conditions': getTechs('HP',self.db)}]
-        self.blocks['eq']= [{'constrName': 'equilibrium_E', 'b': None,
-                            'A': [{'variableName': 'Generation_E', 'parameter': appIndexWithCopySeries(pd.Series(1, index = self.globalDomains['Generation_E']), ['g','h'],['g_alias2','h_alias'])},
-                                  {'variableName': 'HourlyDemand_E', 'parameter': appIndexWithCopySeries(pd.Series(-1, index = self.globalDomains['HourlyDemand_E']), ['g','h'],['g_alias2','h_alias'])},
-                                  {'variableName': 'Transmission_E', 'parameter': appIndexWithCopySeries(pd.Series(-1, index = self.globalDomains['Transmission_E']), ['g','h'],['g_alias2','h_alias'])},
-                                  {'variableName': 'Transmission_E', 'parameter': appIndexWithCopySeries(pd.Series(1-self.db['lineLoss'], index = self.globalDomains['Transmission_E']), ['g_alias','h'], ['g_alias2','h_alias'])}
+        self.blocks['ub']= [{'constrName': 'equilibrium_E', 'b': None,
+                            'A': [{'variableName': 'Generation_E', 'parameter': appIndexWithCopySeries(pd.Series(-1, index = self.globalDomains['Generation_E']), ['g','h'],['g_alias2','h_alias'])},
+                                  {'variableName': 'HourlyDemand_E', 'parameter': appIndexWithCopySeries(pd.Series(1, index = self.globalDomains['HourlyDemand_E']), ['g','h'],['g_alias2','h_alias'])},
+                                  {'variableName': 'Transmission_E', 'parameter': appIndexWithCopySeries(pd.Series(1, index = self.globalDomains['Transmission_E']), ['g','h'],['g_alias2','h_alias'])},
+                                  {'variableName': 'Transmission_E', 'parameter': appIndexWithCopySeries(pd.Series(self.db['lineLoss']-1, index = self.globalDomains['Transmission_E']), ['g_alias','h'], ['g_alias2','h_alias'])}
                                  ]},
                             {'constrName': 'equilibrium_H', 'b':None,
-                            'A': [{'variableName': 'Generation_H', 'parameter': appIndexWithCopySeries(pd.Series(1, index = self.globalDomains['Generation_H']), ['g','h'],['g_alias2','h_alias'])},
-                                  {'variableName': 'HourlyDemand_H', 'parameter': appIndexWithCopySeries(pd.Series(-1, index = self.globalDomains['HourlyDemand_H']), ['g','h'],['g_alias2','h_alias'])}
-                                 ]},
-                            {'constrName': 'PowerToHeat', 'b': None,
+                            'A': [{'variableName': 'Generation_H', 'parameter': appIndexWithCopySeries(pd.Series(-1, index = self.globalDomains['Generation_H']), ['g','h'],['g_alias2','h_alias'])},
+                                  {'variableName': 'HourlyDemand_H', 'parameter': appIndexWithCopySeries(pd.Series(1, index = self.globalDomains['HourlyDemand_H']), ['g','h'],['g_alias2','h_alias'])}
+                                 ]}]
+        self.blocks['eq'] =[{'constrName': 'PowerToHeat', 'b': None,
                             'A': [{'variableName': 'Generation_E', 'parameter': appIndexWithCopySeries(pd.Series(1, index = self.globalDomains['Generation_E']), ['id','h'], ['id_alias','h_alias']), 'conditions': getTechs(['BP','HP'],self.db)},
                                   {'variableName': 'Generation_H', 'parameter': appIndexWithCopySeries(lpCompiler.broadcast(-self.db['E2H'], self.globalDomains['Generation_H']), ['id','h'],['id_alias','h_alias']), 'conditions': getTechs(['BP','HP'],self.db)}
-                                  ]
-                            }
+                                  ]}
                            ]
 
     def postSolve(self, solution, **kwargs):
@@ -160,29 +166,28 @@ class mEmissionCap(mSimple):
                             {'variableName': 'Transmission_E', 'parameter': lpCompiler.broadcast(self.db['lineCapacity'], self.db['h'])}
                            ]
         self.blocks['l'] = [{'variableName': 'Generation_E', 'parameter': -np.inf, 'conditions': getTechs('HP',self.db)}]
-        self.blocks['eq']= [{'constrName': 'equilibrium_E', 'b': None,
-                            'A': [{'variableName': 'Generation_E', 'parameter': appIndexWithCopySeries(pd.Series(1, index = self.globalDomains['Generation_E']), ['g','h'],['g_alias2','h_alias'])},
-                                  {'variableName': 'HourlyDemand_E', 'parameter': appIndexWithCopySeries(pd.Series(-1, index = self.globalDomains['HourlyDemand_E']), ['g','h'],['g_alias2','h_alias'])},
-                                  {'variableName': 'Transmission_E', 'parameter': appIndexWithCopySeries(pd.Series(-1, index = self.globalDomains['Transmission_E']), ['g','h'],['g_alias2','h_alias'])},
-                                  {'variableName': 'Transmission_E', 'parameter': appIndexWithCopySeries(pd.Series(1-self.db['lineLoss'], index = self.globalDomains['Transmission_E']), ['g_alias','h'], ['g_alias2','h_alias'])}
+        self.blocks['ub']= [{'constrName': 'equilibrium_E', 'b': None,
+                            'A': [{'variableName': 'Generation_E', 'parameter': appIndexWithCopySeries(pd.Series(-1, index = self.globalDomains['Generation_E']), ['g','h'],['g_alias2','h_alias'])},
+                                  {'variableName': 'HourlyDemand_E', 'parameter': appIndexWithCopySeries(pd.Series(1, index = self.globalDomains['HourlyDemand_E']), ['g','h'],['g_alias2','h_alias'])},
+                                  {'variableName': 'Transmission_E', 'parameter': appIndexWithCopySeries(pd.Series(1, index = self.globalDomains['Transmission_E']), ['g','h'],['g_alias2','h_alias'])},
+                                  {'variableName': 'Transmission_E', 'parameter': appIndexWithCopySeries(pd.Series(self.db['lineLoss']-1, index = self.globalDomains['Transmission_E']), ['g_alias','h'], ['g_alias2','h_alias'])}
                                  ]},
                             {'constrName': 'equilibrium_H', 'b':None,
-                            'A': [{'variableName': 'Generation_H', 'parameter': appIndexWithCopySeries(pd.Series(1, index = self.globalDomains['Generation_H']), ['g','h'],['g_alias2','h_alias'])},
-                                  {'variableName': 'HourlyDemand_H', 'parameter': appIndexWithCopySeries(pd.Series(-1, index = self.globalDomains['HourlyDemand_H']), ['g','h'],['g_alias2','h_alias'])}
-                                 ]},
-                            {'constrName': 'PowerToHeat', 'b': None,
+                            'A': [{'variableName': 'Generation_H', 'parameter': appIndexWithCopySeries(pd.Series(-1, index = self.globalDomains['Generation_H']), ['g','h'],['g_alias2','h_alias'])},
+                                  {'variableName': 'HourlyDemand_H', 'parameter': appIndexWithCopySeries(pd.Series(1, index = self.globalDomains['HourlyDemand_H']), ['g','h'],['g_alias2','h_alias'])}
+                                 ]}]
+        self.blocks['eq'] =[{'constrName': 'PowerToHeat', 'b': None,
                             'A': [{'variableName': 'Generation_E', 'parameter': appIndexWithCopySeries(pd.Series(1, index = self.globalDomains['Generation_E']), ['id','h'], ['id_alias','h_alias']), 'conditions': getTechs(['BP','HP'],self.db)},
                                   {'variableName': 'Generation_H', 'parameter': appIndexWithCopySeries(lpCompiler.broadcast(-self.db['E2H'], self.globalDomains['Generation_H']), ['id','h'],['id_alias','h_alias']), 'conditions': getTechs(['BP','HP'],self.db)}
-                                  ]
-                            }
+                                  ]}
                            ]
         if self.commonCap:
-            self.blocks['ub'] = [{'constrName': 'emissionsCap', 'b': pdSum(self.db['CO2Cap'], 'g'), 
+            self.blocks['ub'] += [{'constrName': 'emissionsCap', 'b': pdSum(self.db['CO2Cap'], 'g'), 
                                 'A': [{'variableName': 'Generation_E', 'parameter': lpCompiler.broadcast(plantEmissionIntensity(self.db).xs('CO2',level='EmissionType'), self.globalDomains['Generation_E']), 'conditions': getTechs(['standard_E','BP'],self.db)},
                                       {'variableName': 'Generation_H', 'parameter': lpCompiler.broadcast(plantEmissionIntensity(self.db).xs('CO2',level='EmissionType'), self.globalDomains['Generation_H']), 'conditions': getTechs('standard_H',self.db)}]
                                 }]
         else:
-            self.blocks['ub'] = [{'constrName': 'emissionsCap', 'b': rc_pd(self.db['CO2Cap'], alias={'g':'g_alias'}), 
+            self.blocks['ub'] +=[{'constrName': 'emissionsCap', 'b': rc_pd(self.db['CO2Cap'], alias={'g':'g_alias'}), 
                                 'A': [{'variableName': 'Generation_E', 'parameter': appIndexWithCopySeries(lpCompiler.broadcast(plantEmissionIntensity(self.db).xs('CO2',level='EmissionType'), self.globalDomains['Generation_E']),'g','g_alias'), 'conditions': getTechs(['standard_E','BP'],self.db)},
                                       {'variableName': 'Generation_H', 'parameter': appIndexWithCopySeries(lpCompiler.broadcast(plantEmissionIntensity(self.db).xs('CO2',level='EmissionType'), self.globalDomains['Generation_H']),'g','g_alias'), 'conditions': getTechs('standard_H',self.db)}]
                                 }]
@@ -211,29 +216,28 @@ class mRES(mSimple):
                             {'variableName': 'Transmission_E', 'parameter': lpCompiler.broadcast(self.db['lineCapacity'], self.db['h'])}
                            ]
         self.blocks['l'] = [{'variableName': 'Generation_E', 'parameter': -np.inf, 'conditions': getTechs('HP',self.db)}]
-        self.blocks['eq']= [{'constrName': 'equilibrium_E', 'b': None,
-                            'A': [{'variableName': 'Generation_E', 'parameter': appIndexWithCopySeries(pd.Series(1, index = self.globalDomains['Generation_E']), ['g','h'],['g_alias2','h_alias'])},
-                                  {'variableName': 'HourlyDemand_E', 'parameter': appIndexWithCopySeries(pd.Series(-1, index = self.globalDomains['HourlyDemand_E']), ['g','h'],['g_alias2','h_alias'])},
-                                  {'variableName': 'Transmission_E', 'parameter': appIndexWithCopySeries(pd.Series(-1, index = self.globalDomains['Transmission_E']), ['g','h'],['g_alias2','h_alias'])},
-                                  {'variableName': 'Transmission_E', 'parameter': appIndexWithCopySeries(pd.Series(1-self.db['lineLoss'], index = self.globalDomains['Transmission_E']), ['g_alias','h'], ['g_alias2','h_alias'])}
+        self.blocks['ub']= [{'constrName': 'equilibrium_E', 'b': None,
+                            'A': [{'variableName': 'Generation_E', 'parameter': appIndexWithCopySeries(pd.Series(-1, index = self.globalDomains['Generation_E']), ['g','h'],['g_alias2','h_alias'])},
+                                  {'variableName': 'HourlyDemand_E', 'parameter': appIndexWithCopySeries(pd.Series(1, index = self.globalDomains['HourlyDemand_E']), ['g','h'],['g_alias2','h_alias'])},
+                                  {'variableName': 'Transmission_E', 'parameter': appIndexWithCopySeries(pd.Series(1, index = self.globalDomains['Transmission_E']), ['g','h'],['g_alias2','h_alias'])},
+                                  {'variableName': 'Transmission_E', 'parameter': appIndexWithCopySeries(pd.Series(self.db['lineLoss']-1, index = self.globalDomains['Transmission_E']), ['g_alias','h'], ['g_alias2','h_alias'])}
                                  ]},
                             {'constrName': 'equilibrium_H', 'b':None,
-                            'A': [{'variableName': 'Generation_H', 'parameter': appIndexWithCopySeries(pd.Series(1, index = self.globalDomains['Generation_H']), ['g','h'],['g_alias2','h_alias'])},
-                                  {'variableName': 'HourlyDemand_H', 'parameter': appIndexWithCopySeries(pd.Series(-1, index = self.globalDomains['HourlyDemand_H']), ['g','h'],['g_alias2','h_alias'])}
-                                 ]},
-                            {'constrName': 'PowerToHeat', 'b': None,
+                            'A': [{'variableName': 'Generation_H', 'parameter': appIndexWithCopySeries(pd.Series(-1, index = self.globalDomains['Generation_H']), ['g','h'],['g_alias2','h_alias'])},
+                                  {'variableName': 'HourlyDemand_H', 'parameter': appIndexWithCopySeries(pd.Series(1, index = self.globalDomains['HourlyDemand_H']), ['g','h'],['g_alias2','h_alias'])}
+                                 ]}]
+        self.blocks['eq'] =[{'constrName': 'PowerToHeat', 'b': None,
                             'A': [{'variableName': 'Generation_E', 'parameter': appIndexWithCopySeries(pd.Series(1, index = self.globalDomains['Generation_E']), ['id','h'], ['id_alias','h_alias']), 'conditions': getTechs(['BP','HP'],self.db)},
                                   {'variableName': 'Generation_H', 'parameter': appIndexWithCopySeries(lpCompiler.broadcast(-self.db['E2H'], self.globalDomains['Generation_H']), ['id','h'],['id_alias','h_alias']), 'conditions': getTechs(['BP','HP'],self.db)}
-                                  ]
-                            }
+                                  ]}
                            ]
         if self.commonCap:
-            self.blocks['ub'] = [{'constrName': 'RESCapConstraint', 'b': 0, 'A': [ {'variableName': 'Generation_E', 'parameter': -1, 'conditions': ('and', [self.cleanIds, getTechs(['standard_E','BP'],self.db)])},
+            self.blocks['ub']+= [{'constrName': 'RESCapConstraint', 'b': 0, 'A': [ {'variableName': 'Generation_E', 'parameter': -1, 'conditions': ('and', [self.cleanIds, getTechs(['standard_E','BP'],self.db)])},
                                                                                    {'variableName': 'Generation_H', 'parameter': -1, 'conditions': ('and', [self.cleanIds, getTechs(['standard_H','HP'],self.db)])},
                                                                                    {'variableName': 'HourlyDemand_E', 'parameter': self.db['RESCap'].mean()},
                                                                                    {'variableName': 'HourlyDemand_H', 'parameter': self.db['RESCap'].mean()}]}]
         else:
-            self.blocks['ub'] = [{'constrName': 'RESCapConstraint', 'b': pd.Series(0, index = self.db['RESCap'].index), 
+            self.blocks['ub']+= [{'constrName': 'RESCapConstraint', 'b': pd.Series(0, index = self.db['RESCap'].index), 
                                     'A': [  {'variableName': 'Generation_E', 'parameter': 
                                                 appIndexWithCopySeries(pd.Series(-1, index = self.globalDomains['Generation_E']), 'g','g_alias'), 'conditions': ('and', [self.cleanIds, getTechs(['standard_E','BP'],self.db)])},
                                             {'variableName': 'Generation_H', 'parameter': 

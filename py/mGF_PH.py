@@ -36,8 +36,15 @@ def getTechs(techs, db):
     """ Subset on tech types"""
     return rc_pd(db['id2modelTech2tech'].droplevel('tech'), pd.Index(techs if is_iterable(techs) else [techs], name = 'modelTech')).droplevel('modelTech')
 
+def getTechs_i(techs, db):
+    """ Subset on tech types"""
+    return rc_pd(db['id2modelTech2tech'].droplevel('modelTech'), pd.Index(techs if is_iterable(techs) else [techs], name = 'tech')).droplevel('tech')
+
 def subsetIdsTech(x, techs, db):
     return rc_pd(x, getTechs(techs,db))
+
+def subsetIdsTech_i(x, techs, db):
+    return rc_pd(x, getTechs_i(techs,db))
 
 class mSimple(modelShell):
     """ This class includes 
