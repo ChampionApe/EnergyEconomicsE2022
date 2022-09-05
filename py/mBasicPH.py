@@ -57,7 +57,7 @@ class mSimple(modelShell):
         (1) Electricity and heat markets, 
         (2) multiple geographic areas, 
         (3) trade in electricity, 
-        (4) intermittency in generation, 
+s        (4) intermittency in generation, 
         (5) CHP plants and heat pumps """
     def __init__(self, db, blocks = None, **kwargs):
         db.updateAlias(alias=[('h','h_alias'), ('g','g_alias'),('g','g_alias2'),('id','id_alias')])
