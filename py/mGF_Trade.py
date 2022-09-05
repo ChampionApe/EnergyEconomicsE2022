@@ -22,30 +22,6 @@ def plantEmissionIntensity(db):
 def emissionsFuel(db):
     return pdSum(fuelConsumption(db) * db['EmissionIntensity'], 'BFt')
 
-def fixedCosts(db):
-    """ fixed operating and maintenance costs of installed capacity in 1000€. """
-    return db['FOM']*db['GeneratingCapacity'] * len(db['h'])/8760
-
-def variableCosts(db):
-    """ short run costs in 1000€. """
-    return db['mc']*pdSum(db['Generation'], 'h') / 1000
-
-def totalCosts(db):
-    """ total electricity generating costs in 1000€ """
-    return fixedCosts(db).add(variableCosts(db),fill_value = 0)
-
-def averageCapacityCosts(db):
-    return (1000 * totalCosts(db) / pdNonZero(db['GeneratingCapacity'])).droplevel('g')
-
-def averageEnergyCosts(db):
-    return (1000 * totalCosts(db) / pdNonZero(pdSum(db['Generation'], 'h'))).droplevel('g')
-
-def theoreticalCapacityFactor(db):
-    return pdSum( (db['Generation']/pdNonZero(len(db['h']) * db['GeneratingCapacity'])).dropna(), 'h').droplevel('g')
-
-def practicalCapacityFactor(model):
-    return ( pdSum(model.db['Generation'], 'h')/ pdNonZero(pdSum(model.hourlyGeneratingCapacity, 'h')) ).dropna().droplevel('g')
-
 def marginalSystemCosts(db):
     return rc_pd(db['λ_equilibrium'], alias={'h_alias':'h', 'g_alias2': 'g'}).droplevel('_type')
 
@@ -98,7 +74,7 @@ class mSimple(modelShell):
         self.blocks['c'] = [{'variableName': 'Generation', 'parameter': lpCompiler.broadcast(self.db['mc'], self.globalDomains['Generation'])},
                             {'variableName': 'HourlyDemand', 'parameter': -self.db['MWP_LoadShedding']},
                             {'variableName': 'Transmission', 'parameter': lpCompiler.broadcast(self.db['lineMC'], self.db['h'])},
-                            {'variableName': 'GeneratingCapacity', 'parameter': lpCompiler.broadcast(self.db['InvestCost'], self.db['id2tech']).droplevel('tech').add(self.db['FOM'],fill_value=0)}]
+                            {'variableName': 'GeneratingCapacity', 'parameter': lpCompiler.broadcast(self.db['InvestCost_A'], self.db['id2tech']).droplevel('tech').add(self.db['FOM'],fill_value=0)*1000*len(self.db['h'])/8760}]
         self.blocks['u'] = [{'variableName': 'HourlyDemand', 'parameter': self.hourlyLoad}, 
                             {'variableName': 'Transmission', 'parameter': lpCompiler.broadcast(self.db['lineCapacity'], self.db['h'])}]
         self.blocks['eq'] = [{'constrName': 'equilibrium', 'b': None, 
@@ -127,9 +103,6 @@ class mSimple(modelShell):
             self.db['Welfare'] = -solution['fun']
             self.db['FuelConsumption'] = fuelConsumption(self.db)
             self.db['Emissions'] = emissionsFuel(self.db)
-            self.db['capacityFactor'] = theoreticalCapacityFactor(self.db)
-            self.db['capacityCosts'] = averageCapacityCosts(self.db)
-            self.db['energyCosts'] = averageEnergyCosts(self.db)
             self.db['marginalSystemCosts'] = marginalSystemCosts(self.db)
             self.db['congestionRent'] = congestionRent(self.db)
             self.db['meanConsumerPrice'] = meanMarginalSystemCost(self.db, self.db['HourlyDemand'])

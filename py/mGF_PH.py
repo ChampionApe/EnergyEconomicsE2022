@@ -23,9 +23,6 @@ def plantEmissionIntensity(db):
 def emissionsFuel(db):
     return pdSum(fuelConsumption(db) * db['EmissionIntensity'], 'BFt')
 
-def theoreticalCapacityFactor(db):
-    return pdSum((subsetIdsTech(db['Generation_E'], ('standard_E','BP'), db) / pdNonZero(len(db['h']) * db['GeneratingCap_E'])).dropna(), 'h').droplevel('g')
-
 def marginalSystemCosts(db,market):
     return rc_AdjPd(db[f'λ_equilibrium_{market}'], alias={'h_alias':'h', 'g_alias2': 'g'}).droplevel('_type')
 
@@ -111,8 +108,8 @@ class mSimple(modelShell):
                             {'variableName': 'HourlyDemand_E', 'parameter': -self.db['MWP_LoadShedding_E']},
                             {'variableName': 'HourlyDemand_H', 'parameter': -self.db['MWP_LoadShedding_H']},
                             {'variableName': 'Transmission_E', 'parameter': lpCompiler.broadcast(self.db['lineMC'], self.db['h'])},
-                            {'variableName': 'GeneratingCap_E', 'parameter': lpCompiler.broadcast(self.db['InvestCost'], self.db['id2tech']).droplevel('tech').add(self.db['FOM'],fill_value=0), 'conditions': getTechs(['standard_E','BP'],self.db)},
-                            {'variableName': 'GeneratingCap_H', 'parameter': lpCompiler.broadcast(self.db['InvestCost'], self.db['id2tech']).droplevel('tech').add(self.db['FOM'],fill_value=0), 'conditions': getTechs(['standard_H','HP'], self.db)}
+                            {'variableName': 'GeneratingCap_E', 'parameter': lpCompiler.broadcast(self.db['InvestCost_A'], self.db['id2tech']).droplevel('tech').add(self.db['FOM'],fill_value=0)*1000*len(self.db['h'])/8760, 'conditions': getTechs(['standard_E','BP'], self.db)},
+                            {'variableName': 'GeneratingCap_H', 'parameter': lpCompiler.broadcast(self.db['InvestCost_A'], self.db['id2tech']).droplevel('tech').add(self.db['FOM'],fill_value=0)*1000*len(self.db['h'])/8760, 'conditions': getTechs(['standard_H','HP'], self.db)}
                            ]
         self.blocks['u'] = [{'variableName': 'HourlyDemand_E', 'parameter': self.hourlyLoad_E},
                             {'variableName': 'HourlyDemand_H', 'parameter': self.hourlyLoad_H},
