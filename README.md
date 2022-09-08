@@ -11,6 +11,9 @@ A few comments on the structure:
   3. ```mBasicTrade```
   4. ```mBasicPH```
   5. ```mBasicPH_storage```
+  6. ```mGF_Trade```
+  7. ```mGF_PH```
+  8. ```mGF_PH_storage```
 
 ## Installation guide:
 The models require installation of Python (e.g. through *Anaconda*), some type of git tool (e.g. *Github Desktop*, Git, Tortoise), and an editor for python code (e.g. *VSCode* or Sublime). The course *Introduction to Programming and Numerical Analysis* provides some pretty detailed guides for setting up Python and VSCode: https://numeconcopenhagen.netlify.app/guides/. We do, however, rely on different packages in this course, so you will need to supplement the installation with a few extra steps.
