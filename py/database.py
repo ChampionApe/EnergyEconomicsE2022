@@ -19,6 +19,8 @@ def getIndex(symbol):
 		return symbol
 	elif not is_iterable(symbol):
 		return None
+def getDomains(x):
+	return [] if getIndex(x) is None else getIndex(x).names
 def getValues(symbol):
 	""" Default to None if no values are defined """
 	if isinstance(symbol, (pd.Series, pd.DataFrame)):
@@ -83,7 +85,7 @@ class db:
 
 	def variableDomains(self,set_,types=['variable']):
 		""" Return 'types' defined over 'set_'"""
-		return {k:v for k,v in self.getTypes(types).items() if set_ in getIndex(v)}
+		return {k:v for k,v in self.getTypes(types).items() if set_ in getDomains(v)}
 
 	@property
 	def aliasDict(self):

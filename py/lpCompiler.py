@@ -246,9 +246,15 @@ class lpBlock:
 
 	def broadcastAndSort_Ai(self,t,constr,k,bindex):
 		if k in self.getVariables_i(t,constr,attr='compiled'):
-			return pd.DataFrame(0, index = self.gIndex[k], columns = bindex.get_level_values(f'_{t}index')).add(self.get((t,'A',constr,k),attr='compiled').droplevel(f'_{t}symbol').unstack(level=-1).fillna(0), fill_value=0)
+			return sparseDF(self.gIndex[k], bindex.get_level_values(f'_{t}index')).add(self.get((t,'A',constr,k),attr='compiled').droplevel(f'_{t}symbol').unstack(level=-1).fillna(0), fill_value=0)
 		else:
-			return pd.DataFrame(0, index = self.gIndex[k], columns = bindex.get_level_values(f'_{t}index'))
+			return sparseDF(self.gIndex[k], bindex.get_level_values(f'_{t}index'))
+
+	# def broadcastAndSort_Ai(self,t,constr,k,bindex):
+	# 	if k in self.getVariables_i(t,constr,attr='compiled'):
+	# 		return pd.DataFrame(0, index = self.gIndex[k], columns = bindex.get_level_values(f'_{t}index')).add(self.get((t,'A',constr,k),attr='compiled').droplevel(f'_{t}symbol').unstack(level=-1).fillna(0), fill_value=0)
+	# 	else:
+	# 		return pd.DataFrame(0, index = self.gIndex[k], columns = bindex.get_level_values(f'_{t}index'))
 
 	# 5: Methods to get the stacked numpy arrays:
 	def __call__(self, execute=None):

@@ -1,6 +1,10 @@
 import itertools, numpy as np, pandas as pd
 from collections.abc import Iterable
 from six import string_types
+from scipy import sparse
+
+def sparseDF(index, columns, dtype = None):
+	return pd.DataFrame.sparse.from_spmatrix(sparse.coo_array( (len(index),len(columns)), dtype=noneInit(dtype, np.int8)), index = index, columns=columns)
 
 def noneInit(x,FallBackVal):
 	return FallBackVal if x is None else x

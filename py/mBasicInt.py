@@ -116,28 +116,16 @@ class mSimple(modelShell):
 
 class mEmissionCap(mSimple):
     def __init__(self, db, blocks=None, **kwargs):
-        db.updateAlias(alias=[('h','h_alias')])
         super().__init__(db, blocks=blocks, **kwargs)
 
     def initBlocks(self, **kwargs):
-        self.blocks['c'] = [{'variableName': 'Generation', 'parameter': lpCompiler.broadcast(self.db['mc'], self.db['h'])},
-                            {'variableName': 'HourlyDemand', 'parameter': -self.db['MWP_LoadShedding']}]
-        self.blocks['u'] = [{'variableName': 'Generation', 'parameter': self.hourlyGeneratingCapacity},
-                            {'variableName': 'HourlyDemand', 'parameter': self.hourlyLoad}]
-        self.blocks['eq'] = [{'constrName': 'equilibrium', 'b': None, 
-                            'A': [{'variableName': 'Generation', 'parameter'  : appIndexWithCopySeries(pd.Series(1, index = self.globalDomains['Generation']), 'h','h_alias')},
-                                  {'variableName': 'HourlyDemand', 'parameter': appIndexWithCopySeries(pd.Series(-1, index = self.globalDomains['HourlyDemand']), 'h','h_alias')}
-                                 ]
-                             }
-                            ]
+        super().initBlocks(**kwargs)
         self.blocks['ub'] = [{'constrName': 'emissionsCap', 'b': self.db['CO2Cap'], 
-                            'A': [{'variableName': 'Generation', 'parameter': lpCompiler.broadcast(plantEmissionIntensity(self.db).xs('CO2',level='EmissionType'), self.db['h'])}
-                                 ]
-                             }]
+                            'A': [{'variableName': 'Generation', 'parameter': lpCompiler.broadcast(plantEmissionIntensity(self.db).xs('CO2',level='EmissionType'), self.db['h'])}]
+                            }]
 
 class mRES(mSimple):
     def __init__(self, db, blocks=None, **kwargs):
-        db.updateAlias(alias=[('h','h_alias')])
         super().__init__(db, blocks=blocks, **kwargs)
 
     @property
@@ -146,16 +134,7 @@ class mRES(mSimple):
         return s[s <= 0].index
 
     def initBlocks(self, **kwargs):
-        self.blocks['c'] = [{'variableName': 'Generation', 'parameter': lpCompiler.broadcast(self.db['mc'], self.db['h'])},
-                            {'variableName': 'HourlyDemand', 'parameter': -self.db['MWP_LoadShedding']}]
-        self.blocks['u'] = [{'variableName': 'Generation', 'parameter': self.hourlyGeneratingCapacity},
-                            {'variableName': 'HourlyDemand', 'parameter': self.hourlyLoad}]
-        self.blocks['eq'] = [{'constrName': 'equilibrium', 'b': None, 
-                            'A': [{'variableName': 'Generation', 'parameter'  : appIndexWithCopySeries(pd.Series(1, index = self.globalDomains['Generation']), 'h','h_alias')},
-                                  {'variableName': 'HourlyDemand', 'parameter': appIndexWithCopySeries(pd.Series(-1, index = self.globalDomains['HourlyDemand']), 'h','h_alias')}
-                                 ]
-                             }
-                            ]
+        super().initBlocks(**kwargs)
         self.blocks['ub'] = [{'constrName': 'RESCapConstraint', 'b': 0, 'A': [  {'variableName': 'Generation', 'parameter': -1, 'conditions': self.cleanIds},
                                                                                 {'variableName': 'HourlyDemand', 'parameter': self.db['RESCap']}]}]
 

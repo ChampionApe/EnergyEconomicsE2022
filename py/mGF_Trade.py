@@ -23,7 +23,7 @@ def emissionsFuel(db):
     return pdSum(fuelConsumption(db) * db['EmissionIntensity'], 'BFt')
 
 def marginalSystemCosts(db):
-    return rc_pd(db['λ_equilibrium'], alias={'h_alias':'h', 'g_alias2': 'g'}).droplevel('_type')
+    return -rc_pd(db['λ_equilibrium'], alias={'h_alias':'h', 'g_alias2': 'g'}).droplevel('_type')
 
 def meanMarginalSystemCost(db, var):
     return pdSum( (var * marginalSystemCosts(db)) / pdNonZero(pdSum(var, 'h')), 'h')

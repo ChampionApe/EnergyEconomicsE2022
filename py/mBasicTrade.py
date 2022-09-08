@@ -137,21 +137,7 @@ class mEmissionCap(mSimple):
         self.commonCap = commonCap
 
     def initBlocks(self, **kwargs):
-        self.blocks['c'] = [{'variableName': 'Generation', 'parameter': lpCompiler.broadcast(self.db['mc'], self.globalDomains['Generation'])},
-                            {'variableName': 'HourlyDemand', 'parameter': -self.db['MWP_LoadShedding']},
-                            {'variableName': 'Transmission', 'parameter': lpCompiler.broadcast(self.db['lineMC'], self.db['h'])}]
-        self.blocks['u'] = [{'variableName': 'Generation',   'parameter': lpCompiler.broadcast(self.hourlyGeneratingCapacity, self.globalDomains['Generation'])},
-                            {'variableName': 'HourlyDemand', 'parameter': self.hourlyLoad},
-                            {'variableName': 'Transmission', 'parameter': lpCompiler.broadcast(self.db['lineCapacity'], self.db['h'])}]
-        self.blocks['eq'] = [{'constrName': 'equilibrium', 'b': None, 
-                            'A': [
-                                    {'variableName': 'Generation', 'parameter'  : appIndexWithCopySeries(pd.Series(1, index = self.globalDomains['Generation']), ['g','h'],['g_alias2','h_alias'])},
-                                    {'variableName': 'HourlyDemand', 'parameter': appIndexWithCopySeries(pd.Series(-1, index = self.globalDomains['HourlyDemand']), ['g','h'],['g_alias2','h_alias'])},
-                                    {'variableName': 'Transmission', 'parameter': appIndexWithCopySeries(pd.Series(-1, index = self.globalDomains['Transmission']), ['g','h'],['g_alias2','h_alias'])},
-                                    {'variableName': 'Transmission', 'parameter': appIndexWithCopySeries(pd.Series(1-self.db['lineLoss'], index = self.globalDomains['Transmission']), ['g_alias','h'], ['g_alias2','h_alias'])}
-                                 ]
-                             }
-                            ]
+        super().initBlocks(**kwargs)
         if self.commonCap:
             self.blocks['ub'] = [{'constrName': 'emissionsCap', 'b': pdSum(self.db['CO2Cap'], 'g'), 
                                 'A': [{'variableName': 'Generation', 'parameter': lpCompiler.broadcast(plantEmissionIntensity(self.db).xs('CO2',level='EmissionType'), self.globalDomains['Generation'])}]
@@ -174,21 +160,7 @@ class mRES(mSimple):
         return s[s <= 0].index
 
     def initBlocks(self, **kwargs):
-        self.blocks['c'] = [{'variableName': 'Generation', 'parameter': lpCompiler.broadcast(self.db['mc'], self.globalDomains['Generation'])},
-                            {'variableName': 'HourlyDemand', 'parameter': -self.db['MWP_LoadShedding']},
-                            {'variableName': 'Transmission', 'parameter': lpCompiler.broadcast(self.db['lineMC'], self.db['h'])}]
-        self.blocks['u'] = [{'variableName': 'Generation',   'parameter': lpCompiler.broadcast(self.hourlyGeneratingCapacity, self.globalDomains['Generation'])},
-                            {'variableName': 'HourlyDemand', 'parameter': self.hourlyLoad},
-                            {'variableName': 'Transmission', 'parameter': lpCompiler.broadcast(self.db['lineCapacity'], self.db['h'])}]
-        self.blocks['eq'] = [{'constrName': 'equilibrium', 'b': None, 
-                            'A': [
-                                    {'variableName': 'Generation', 'parameter'  : appIndexWithCopySeries(pd.Series(1, index = self.globalDomains['Generation']), ['g','h'],['g_alias2','h_alias'])},
-                                    {'variableName': 'HourlyDemand', 'parameter': appIndexWithCopySeries(pd.Series(-1, index = self.globalDomains['HourlyDemand']), ['g','h'],['g_alias2','h_alias'])},
-                                    {'variableName': 'Transmission', 'parameter': appIndexWithCopySeries(pd.Series(-1, index = self.globalDomains['Transmission']), ['g','h'],['g_alias2','h_alias'])},
-                                    {'variableName': 'Transmission', 'parameter': appIndexWithCopySeries(pd.Series(1-self.db['lineLoss'], index = self.globalDomains['Transmission']), ['g_alias','h'], ['g_alias2','h_alias'])}
-                                 ]
-                             }
-                            ]
+        super().initBlocks(**kwargs)
         if self.commonCap:
             self.blocks['ub'] = [{'constrName': 'RESCapConstraint', 'b': 0, 'A': [ {'variableName': 'Generation', 'parameter': -1, 'conditions': self.cleanIds},
                                                                                    {'variableName': 'HourlyDemand', 'parameter': self.db['RESCap'].mean()}]}]

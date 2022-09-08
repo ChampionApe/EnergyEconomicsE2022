@@ -53,11 +53,10 @@ class mEmissionCap(mSimple):
     def __init__(self, db, blocks=None, **kwargs):
         super().__init__(db, blocks=blocks, **kwargs)
 
-    def initBlocks(self, **kwargs):
-        self.blocks['c'] = [{'variableName': 'Generation', 'parameter': self.db['mc']}]
-        self.blocks['u'] = [{'variableName': 'Generation', 'parameter': self.db['GeneratingCapacity']}]
-        self.blocks['eq'] = [{'constrName': 'equilibrium', 'b': self.getLoad, 'A': [{'variableName': 'Generation', 'parameter': 1}]}]
+    def initBlocks(self,**kwargs):
+        super().initBlocks(**kwargs)
         self.blocks['ub'] = [{'constrName': 'emissionsCap', 'b': self.db['CO2Cap'], 'A': [{'variableName': 'Generation', 'parameter': plantEmissionIntensity(self.db)}]}]
+
 
 class mRES(mSimple):
     def __init__(self, db, blocks=None, **kwargs):
@@ -69,7 +68,5 @@ class mRES(mSimple):
         return s[s <= 0].index
 
     def initBlocks(self, **kwargs):
-        self.blocks['c'] = [{'variableName': 'Generation', 'parameter': self.db['mc']}]
-        self.blocks['u'] = [{'variableName': 'Generation', 'parameter': self.db['GeneratingCapacity']}]
-        self.blocks['eq'] = [{'constrName': 'equilibrium', 'b': self.getLoad, 'A': [{'variableName': 'Generation', 'parameter': 1}]}]
+        super().initBlocks(**kwargs)
         self.blocks['ub'] = [{'constrName': 'RESCapConstraint', 'b': -self.db['RESCap']*self.getLoad, 'A': [{'variableName': 'Generation', 'parameter': -1, 'conditions': self.cleanIds}]}]
