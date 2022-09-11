@@ -21,3 +21,7 @@ The models require installation of Python (e.g. through *Anaconda*), some type o
 #### Requirements (after installation):
 * Open "Anaconda Prompt" ("Terminal" for Mac) and write: ```conda install jupyterlab nodejs pandas openpyxl scipy```.
 * Also from "Anaconda Prompt" ("Terminal" for Mac): ```pip install seaborn```.
+
+If you already have some of these packages installed, you might need to update them. In particular, you'll need:
+ * pandas version >=1.3.1 
+ * scipy version >=1.8.0
