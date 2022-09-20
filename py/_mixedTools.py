@@ -60,7 +60,6 @@ def ndarray_or_1darray(ndarray, indices, i):
 def concatArrays(ndarray, indices):
 	return np.concatenate(tuple(ndarray_or_1darray(ndarray, indices, i) for i in range(len(indices))), axis=1)
 
-
 class OrdSet:
 	def __init__(self,i=None):
 		self.v = list(dict.fromkeys(noneInit(i,[])))

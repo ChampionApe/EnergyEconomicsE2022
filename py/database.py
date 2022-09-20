@@ -38,7 +38,7 @@ def mergeVals(s1,s2):
 		return s1
 def symbols_(db_i):
 	""" return dictionary of symbols """
-	return db_i.symbols if isinstance(db_i, db) else db_i	
+	return db_i.symbols if isinstance(db_i, db) else db_i
 
 
 class db:

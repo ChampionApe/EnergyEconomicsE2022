@@ -62,4 +62,3 @@ def addGrid(v0,vT,index,name,gridtype = 'linear', phi = 1,sort_levels=None, sort
 		return pd.DataFrame(grid(v0,vT,index,gridtype=gridtype,phi=phi).T, index = v0.index, columns = index).stack().rename(name).reorder_levels(index.names+v0.index.names if sort_levels is None else sort_levels)
 	else:
 		return pd.Series(grid(v0,vT,index,gridtype=gridtype,phi=phi), index = index,name=name)
-
