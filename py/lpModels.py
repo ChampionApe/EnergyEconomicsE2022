@@ -39,7 +39,7 @@ class modelShell:
 
     def unloadDualSolution(self, sol):
     	fullVector = self.blocks.dual_solution(sol, scalarDual = self.scalarDualAtUpper)
-    	return self.unloadShadowValuesConstraints(fullVector) | self.unloadShadowValuesBounds(fullVector)
+    	return {**self.unloadShadowValuesConstraints(fullVector), **self.unloadShadowValuesBounds(fullVector)}
 
     def unloadShadowValuesBounds(self, fullVector):
     	return {'λ_'+k: lpCompiler.vIndexSymbol_dual(fullVector, k, v) for k, v in self.blocks.alldomains.items()}
