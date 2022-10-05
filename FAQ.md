@@ -17,3 +17,6 @@ Using Anaconda Prompt (Terminal if Mac) and write:
  ```Terminal
 pip install scipy --upgrade
 ```
+
+### Issue with Python version < 3.9 fixed as of (26/9/2022):
+Previously, the classes applied the merge operator for dictionaries ```|``` - which was only implemented in Python>=3.9. This has been reversed using the ```{**d1 | **d2}``` syntax instead.   
