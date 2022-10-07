@@ -27,7 +27,7 @@ def theoreticalCapacityFactor(db):
     return pdSum((subsetIdsTech(db['Generation_E'], ('standard_E','BP'), db) / pdNonZero(len(db['h']) * db['GeneratingCap_E'])).dropna(), 'h').droplevel('g')
 
 def marginalSystemCosts(db,market):
-    return rc_AdjPd(db[f'λ_equilibrium_{market}'], alias={'h_alias':'h', 'g_alias2': 'g'}).droplevel('_type')
+    return -rc_AdjPd(db[f'λ_equilibrium_{market}'], alias={'h_alias':'h', 'g_alias2': 'g'}).droplevel('_type')
 
 def meanMarginalSystemCost(db, var, market):
     return pdSum( (var * marginalSystemCosts(db,market)) / pdNonZero(pdSum(var, 'h')), 'h')
