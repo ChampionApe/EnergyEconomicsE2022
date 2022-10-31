@@ -63,4 +63,5 @@ class modelShell:
                    postSolve=postSolve, printSol=printSol)
         return [self.db[k] for k in extract]
 
-
+    def decomposeObjective(self):
+        return {v: sum((self.db[v] * self.blocks.get(('c',v), attr='parameters')).dropna()) for v in self.blocks.allvars}

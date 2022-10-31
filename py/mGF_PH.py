@@ -1,5 +1,6 @@
 from _mixedTools import *
-from databaseAux import appIndexWithCopySeries, offsetLevelS
+import database
+from databaseAux import appIndexWithCopySeries, offsetLevelS, applyMult
 from subsetPandas import rc_pd, rc_AdjPd
 import lpCompiler
 from lpModels import modelShell
@@ -74,11 +75,17 @@ class mSimple(modelShell):
         return subsetIdsTech( (lpCompiler.broadcast(self.db['GeneratingCap_H'], self.db['id2hvt']) * self.db['CapVariation']).dropna().droplevel('hvt'),
                                 ('standard_H','HP'), self.db)
     @property
+    def hourlyLoad_cE(self):
+        return lpCompiler.broadcast(self.db['Load_E'] * self.db['LoadVariation_E'], self.db['c_E2g']).reorder_levels(['c_E','g','h'])
+    @property
+    def hourlyLoad_cH(self):
+        return lpCompiler.broadcast(self.db['Load_H'] * self.db['LoadVariation_H'], self.db['c_H2g']).reorder_levels(['c_H','g','h'])
+    @property
     def hourlyLoad_E(self):
-        return pdSum(lpCompiler.broadcast(self.db['Load_E'] * self.db['LoadVariation_E'], self.db['c_E2g']), 'c_E')
+        return pdSum(self.hourlyLoad_cE, 'c_E')
     @property
     def hourlyLoad_H(self):
-        return pdSum(lpCompiler.broadcast(self.db['Load_H'] * self.db['LoadVariation_H'], self.db['c_H2g']), 'c_H')
+        return pdSum(self.hourlyLoad_cH, 'c_H')
 
     def preSolve(self, recomputeMC=False, **kwargs):
             if ('mc' not in self.db.symbols) or recomputeMC:
@@ -105,8 +112,8 @@ class mSimple(modelShell):
     def initBlocks(self, **kwargs):
         self.blocks['c'] = [{'variableName': 'Generation_E', 'parameter': lpCompiler.broadcast(self.db['mc'], self.globalDomains['Generation_E']), 'conditions': getTechs(['standard_E','BP'],self.db)},
                             {'variableName': 'Generation_H', 'parameter': lpCompiler.broadcast(self.db['mc'], self.globalDomains['Generation_H']), 'conditions': getTechs(['standard_H','HP'],self.db)},
-                            {'variableName': 'HourlyDemand_E', 'parameter': -self.db['MWP_LoadShedding_E']},
-                            {'variableName': 'HourlyDemand_H', 'parameter': -self.db['MWP_LoadShedding_H']},
+                            {'variableName': 'HourlyDemand_E', 'parameter': -lpCompiler.broadcast(self.db['MWP_LoadShedding_E'], self.globalDomains['HourlyDemand_E'])},
+                            {'variableName': 'HourlyDemand_H', 'parameter': -lpCompiler.broadcast(self.db['MWP_LoadShedding_H'], self.globalDomains['HourlyDemand_H'])},
                             {'variableName': 'Transmission_E', 'parameter': lpCompiler.broadcast(self.db['lineMC'], self.db['h'])},
                             {'variableName': 'GeneratingCap_E', 'parameter': lpCompiler.broadcast(self.db['InvestCost_A'], self.db['id2tech']).droplevel('tech').add(self.db['FOM'],fill_value=0)*1000*len(self.db['h'])/8760, 'conditions': getTechs(['standard_E','BP'], self.db)},
                             {'variableName': 'GeneratingCap_H', 'parameter': lpCompiler.broadcast(self.db['InvestCost_A'], self.db['id2tech']).droplevel('tech').add(self.db['FOM'],fill_value=0)*1000*len(self.db['h'])/8760, 'conditions': getTechs(['standard_H','HP'], self.db)}
@@ -163,6 +170,33 @@ class mSimple(modelShell):
             self.db['meanConsumerPrice_E'] = meanMarginalSystemCost(self.db, self.db['HourlyDemand_E'],'E')
             self.db['meanConsumerPrice_H'] = meanMarginalSystemCost(self.db, self.db['HourlyDemand_H'],'H')
 
+    def decomposeWelfare(self):
+        x = {k: getattr(self, k) for k in ('consumerSurplus_E','consumerSurplus_H','producerRevenue','shortRunCosts','longRunCosts','tradeSurplus')}
+        return {**x, **{'producerSurplus': x['producerRevenue']-(x['shortRunCosts'])-x['longRunCosts']}}
+
+    def adjustMWP(self, x='E'):
+        return self.db[f'MWP_LoadShedding_{x}'] if database.type_(self.db[f'MWP_LoadShedding_{x}']) == 'scalar' else applyMult(self.db[f'MWP_LoadShedding_{x}'], self.db[f'c_{x}2g'])
+    @property
+    def consumerSurplus_E(self):
+        return pdSum((self.db['HourlyDemand_E'] * (self.adjustMWP(x='E')-self.db['marginalSystemCosts_E'])), 'h')
+    @property
+    def consumerSurplus_H(self):
+        return pdSum((self.db['HourlyDemand_H'] * (self.adjustMWP(x='H')-self.db['marginalSystemCosts_H'])), 'h')
+    @property
+    def producerRevenue(self):
+        return ((self.db['Generation_E'] * self.db['marginalSystemCosts_E']).add( self.db['Generation_H'] * self.db['marginalSystemCosts_H'], fill_value=0)).groupby('id').sum()
+    @property
+    def shortRunCosts(self):
+        return  (self.db['Generation_E'] * self.blocks.get(('c','Generation_E'), attr='parameters')).dropna().groupby('id').sum().add(
+                (self.db['Generation_H'] * self.blocks.get(('c','Generation_H'), attr='parameters')).dropna().groupby('id').sum(),fill_value=0)
+    @property
+    def longRunCosts(self):
+        return (self.db['GeneratingCap_E'] * self.blocks.get(('c','GeneratingCap_E'), attr = 'parameters')).add(
+                self.db['GeneratingCap_H'] * self.blocks.get(('c','GeneratingCap_H'), attr = 'parameters'), fill_value=0)
+    @property
+    def tradeSurplus(self):
+        A_transmission = self.blocks.get(('ub','A','equilibrium_E','Transmission_E'),attr='parameters')
+        return -((self.db['Transmission_E'] * A_transmission).groupby(['g_alias2','h_alias']).sum().rename_axis(index={'g_alias2':'g','h_alias':'h'}) * self.db['marginalSystemCosts_E']).groupby('g').sum()-(self.db['Transmission_E'] * self.blocks.get(('c','Transmission_E'),attr='parameters')).dropna().groupby('g').sum()
 
 class mEmissionCap(mSimple):
     def __init__(self, db, blocks = None, commonCap = True, **kwargs):
@@ -212,3 +246,39 @@ class mRES(mSimple):
                                          ]
                                  }
                                 ]
+
+class mMultipleConsumers(mSimple):
+    def __init__(self, db, blocks=None, **kwargs):
+        super().__init__(db, blocks=blocks, **kwargs)
+
+    @property
+    def globalDomains(self):
+        return {'Generation_E': cartesianProductIndex([subsetIdsTech(self.db['id2g'], self.modelTech_E, self.db), self.db['h']]), 
+                'Generation_H': cartesianProductIndex([subsetIdsTech(self.db['id2g'], self.modelTech_H, self.db), self.db['h']]),
+                'GeneratingCap_E': getTechs(['standard_E','BP'], self.db),
+                'GeneratingCap_H': getTechs(['standard_H','HP'], self.db),
+                'HourlyDemand_E': cartesianProductIndex([self.db['c_E2g'], self.db['h']]),
+                'HourlyDemand_H': cartesianProductIndex([self.db['c_H2g'], self.db['h']]),
+                'Transmission_E': cartesianProductIndex([self.db['gConnected'],self.db['h']]),
+                'equilibrium_E': pd.MultiIndex.from_product([self.db['g_alias2'], self.db['h_alias']]),
+                'equilibrium_H': pd.MultiIndex.from_product([self.db['g_alias2'], self.db['h_alias']]),
+                'PowerToHeat': cartesianProductIndex([rc_AdjPd(getTechs(['BP','HP'],self.db), alias = {'id':'id_alias'}), self.db['h_alias']]),
+                'ECapConstr': cartesianProductIndex([rc_AdjPd(rc_pd(self.db['id2g'], getTechs(['standard_E','BP'],self.db)), alias = {'id':'id_alias','g':'g_alias'}), self.db['h_alias']]),
+                'HCapConstr': cartesianProductIndex([rc_AdjPd(rc_pd(self.db['id2g'], getTechs(['standard_H','HP'],self.db)), alias = {'id':'id_alias','g':'g_alias'}), self.db['h_alias']]),
+                'TechCapConstr_E': self.db['TechCap_E'].index,
+                'TechCapConstr_H': self.db['TechCap_H'].index}
+
+    def initBlocks(self, **kwargs):
+        super().initBlocks(**kwargs)
+        self.blocks['c'] = [{'variableName': 'Generation_E', 'parameter': lpCompiler.broadcast(self.db['mc'], self.globalDomains['Generation_E']), 'conditions': getTechs(['standard_E','BP'],self.db)},
+                            {'variableName': 'Generation_H', 'parameter': lpCompiler.broadcast(self.db['mc'], self.globalDomains['Generation_H']), 'conditions': getTechs(['standard_H','HP'],self.db)},
+                            {'variableName': 'HourlyDemand_E', 'parameter': -lpCompiler.broadcast(self.db['MWP_LoadShedding_E'], self.globalDomains['HourlyDemand_E'])},
+                            {'variableName': 'HourlyDemand_H', 'parameter': -lpCompiler.broadcast(self.db['MWP_LoadShedding_H'], self.globalDomains['HourlyDemand_H'])},
+                            {'variableName': 'Transmission_E', 'parameter': lpCompiler.broadcast(self.db['lineMC'], self.db['h'])},
+                            {'variableName': 'GeneratingCap_E', 'parameter': lpCompiler.broadcast(self.db['InvestCost_A'], self.db['id2tech']).droplevel('tech').add(self.db['FOM'],fill_value=0)*1000*len(self.db['h'])/8760, 'conditions': getTechs(['standard_E','BP'], self.db)},
+                            {'variableName': 'GeneratingCap_H', 'parameter': lpCompiler.broadcast(self.db['InvestCost_A'], self.db['id2tech']).droplevel('tech').add(self.db['FOM'],fill_value=0)*1000*len(self.db['h'])/8760, 'conditions': getTechs(['standard_H','HP'], self.db)}
+                           ]
+        self.blocks['u'] = [{'variableName': 'HourlyDemand_E', 'parameter': self.hourlyLoad_cE},
+                            {'variableName': 'HourlyDemand_H', 'parameter': self.hourlyLoad_cH},
+                            {'variableName': 'Transmission_E', 'parameter': lpCompiler.broadcast(self.db['lineCapacity'], self.db['h'])}
+                           ]
