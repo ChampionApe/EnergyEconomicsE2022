@@ -33,6 +33,15 @@ class modelShell:
             print(f"Solution status {sol['status']}: {sol['message']}")
         self.postSolve(sol, **noneInit(initBlocks, {}))
 
+    def adjustInitBlocks(self,**kwargs):
+        [self.addBlock_i(k,v) for k,v in kwargs.items()];
+
+    def addBlock_i(self,k,v):
+        if self.blocks[k] is None:
+            self.blocks.__setitem__(k,v)
+        else:
+            self.blocks[k] += v
+
     def unloadSolution(self, sol):
         fullVector = pd.Series(sol['x'], index=self.blocks.lp_solutionIndex)
         return {k: lpCompiler.vIndexVariable(fullVector, k, v) for k, v in self.blocks.alldomains.items()}

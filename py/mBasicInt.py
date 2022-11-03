@@ -77,8 +77,12 @@ class mSimple(modelShell):
         return lpCompiler.broadcast(rc_pd(self.db['CapVariation'], self.db['id2hvt']), self.db['id2hvt']).droplevel('hvt')
 
     @property
+    def hourlyLoad_c(self):
+        return self.db['LoadVariation'] * self.db['Load']
+
+    @property
     def hourlyLoad(self):
-        return pdSum(self.db['LoadVariation'] * self.db['Load'], 'c')
+        return pdSum(self.hourlyLoad_c, 'c')
 
     def preSolve(self, recomputeMC=False, **kwargs):
         if ('mc' not in self.db.symbols) or recomputeMC:
@@ -101,6 +105,8 @@ class mSimple(modelShell):
         						 ]
         					 }
         					]
+        if kwargs:
+            self.adjustInitBlocks(**kwargs)
 
     def postSolve(self, solution, **kwargs):
         if solution['status'] == 0:
@@ -138,3 +144,18 @@ class mRES(mSimple):
         self.blocks['ub'] = [{'constrName': 'RESCapConstraint', 'b': 0, 'A': [  {'variableName': 'Generation', 'parameter': -1, 'conditions': self.cleanIds},
                                                                                 {'variableName': 'HourlyDemand', 'parameter': self.db['RESCap']}]}]
 
+class mMultipleConsumers(mSimple):
+    def __init__(self, db, blocks=None, **kwargs):
+        super().__init__(db, blocks=blocks, **kwargs)
+
+    @property
+    def globalDomains(self):
+        return {'Generation': pd.MultiIndex.from_product([self.db['h'], self.db['id']]),
+                'HourlyDemand': cartesianProductIndex([self.db['c'], self.db['h']]),
+                'equilibrium': self.db['h_alias']}
+
+    def initBlocks(self, **kwargs):
+        self.blocks['c'] = [{'variableName': 'Generation', 'parameter': lpCompiler.broadcast(self.db['mc'], self.db['h'])},
+                            {'variableName': 'HourlyDemand', 'parameter': -lpCompiler.broadcast(self.db['MWP_LoadShedding'], self.globalDomains['HourlyDemand'])}]
+        self.blocks['u'] = [{'variableName': 'Generation', 'parameter': self.hourlyGeneratingCapacity},
+                            {'variableName': 'HourlyDemand', 'parameter': self.hourlyLoad_c}]
