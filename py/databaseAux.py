@@ -6,15 +6,31 @@ def readSets(db, types = None):
 	""" Read sets from database symbols """
 	[db.addOrMerge(set_, database.getIndex(symbol).get_level_values(set_).unique()) for symbol in db.getTypes(noneInit(types,['variable'])).values() for set_ in database.getIndex(symbol).names];
 
+
 def applyMult(symbol, mapping):
 	""" Apply 'mapping' to a symbol using multiindex """
 	if isinstance(symbol,pd.Index):
-		return (pd.Series(0, index = symbol).add(pd.Series(0, index = rc_pd(mapping,symbol)))).dropna().index.reorder_levels(symbol.names+[k for k in mapping.names if k not in symbol.names])
+		try: 
+			return (pd.Series(0, index = symbol).add(pd.Series(0, index = rc_pd(mapping,symbol)))).dropna().index.reorder_levels(symbol.names+[k for k in mapping.names if k not in symbol.names])
+		except KeyError:
+			return adhocFix_pandasRemovesIndexLevels(symbol,mapping)
 	elif isinstance(symbol,pd.Series):
 		if symbol.empty:
 			return pd.Series([], index = pd.MultiIndex.from_tuples([], names = symbol.index.names + [k for k in mapping.names if k not in symbol.index.names]))
-		else: 
-			return symbol.add(pd.Series(0, index = rc_pd(mapping,symbol))).reorder_levels(symbol.index.names+[k for k in mapping.names if k not in symbol.index.names])
+		else:
+			s = symbol.add(pd.Series(0, index = rc_pd(mapping,symbol)))
+			try: 
+				return s.reorder_levels(symbol.index.names+[k for k in mapping.names if k not in symbol.index.names])
+			except KeyError:
+				s.index = adhocFix_pandasRemovesIndexLevels(s.index, mapping)
+				return s
+
+def adhocFix_pandasRemovesIndexLevels(symbol, mapping):
+	""" When multiindices are matched, redundant index levels are dropped automatically - this keeps them """
+	s1,s2 = pd.Series(0, index = symbol), pd.Series(0, index = rc_pd(mapping,symbol))
+	x,y = s1.add(s2).dropna().index, s2.add(s1).dropna().index
+	x_df, y_df = x.to_frame().set_index(list(set(x.names).intersection(y.names))), y.to_frame().set_index(list(set(x.names).intersection(y.names)))
+	return pd.MultiIndex.from_frame(pd.concat([x_df, y_df], axis =1).reset_index())
 
 def appIndexWithCopySeries(s, copyLevel, newLevel):
 	s.index = appendIndexWithCopy(s.index,copyLevel,newLevel)
