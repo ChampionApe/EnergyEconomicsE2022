@@ -24,14 +24,14 @@ class modelShell:
         if hasattr(self, 'globalDomains'):
             self.blocks.globalDomains = self.globalDomains
 
-    def solve(self, preSolve=None, initBlocks=None, postSolve=None, printSol=True, solkwargs = None):
+    def solve(self, preSolve=None, initBlocks=None, postSolve=None, printSol=True, solkwargs = None, solOptions = None):
         if hasattr(self, 'preSolve'):
             self.preSolve(**noneInit(preSolve, {}))
         self.initBlocks(**noneInit(initBlocks, {}))
-        sol = optimize.linprog(method = self.method, **self.blocks(**noneInit(solkwargs,{})))
+        sol = optimize.linprog(method = self.method, **self.blocks(**noneInit(solkwargs,{})), **noneInit(solOptions, {}))
         if printSol:
             print(f"Solution status {sol['status']}: {sol['message']}")
-        self.postSolve(sol, **noneInit(initBlocks, {}))
+        self.postSolve(sol, **noneInit(postSolve, {}))
 
     def adjustInitBlocks(self,**kwargs):
         [self.addBlock_i(k,v) for k,v in kwargs.items()];

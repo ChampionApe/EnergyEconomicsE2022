@@ -53,7 +53,7 @@ def asSeriesIfIndex(x,val = 0):
 	return pd.Series(val, index = x) if isinstance(x, pd.Index) else x
 
 # 2: GLOBAL INDEX METHODS
-def setattrReturn(symbol, k,v):
+def setattrReturn(symbol,k,v):
 	symbol.__setattr__(k,v)
 	return symbol
 

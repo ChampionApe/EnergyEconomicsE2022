@@ -95,7 +95,7 @@ s        (4) intermittency in generation,
 
     @property
     def globalDomains(self):
-        return {'Generation_E': cartesianProductIndex([subsetIdsTech(self.db['id2g'], self.modelTech_E, self.db), self.db['h']]), 
+        return {'Generation_E': cartesianProductIndex([subsetIdsTech(self.db['id2g'], self.modelTech_E, self.db), self.db['h']]),
                 'Generation_H': cartesianProductIndex([subsetIdsTech(self.db['id2g'], self.modelTech_H, self.db), self.db['h']]),
                 'HourlyDemand_E': pd.MultiIndex.from_product([self.db['g'], self.db['h']]),
                 'HourlyDemand_H': pd.MultiIndex.from_product([self.db['g'], self.db['h']]),
