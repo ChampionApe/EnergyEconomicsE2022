@@ -44,7 +44,7 @@ def aux_var(sheet,col,spliton):
 	if pd_temp.shape[1]==2:
 		index = pd.Index(pd_temp.iloc[1:,0])
 	else:
-		index = pd.MultiIndex.from_frame(pd_temp.iloc[1:,:-1])
+		index = pd.MultiIndex.from_frame(pd_temp.iloc[1:,:-1],)
 	return pd.Series(pd_temp.iloc[1:,-1].values,index=index,name=col)
 
 def variables(sheet,spliton='/'):
