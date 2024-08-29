@@ -27,7 +27,7 @@ def mult_graphs():
     plt.rc('xtick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
     plt.rc('ytick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
     plt.rc('legend', fontsize=SMALL_SIZE)    # legend fontsize
-    plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title    
+    plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title  
 
 def demandLinear_df(mwp, load, minX = 0, minY = 0):
     df = pd.DataFrame({'c': mwp if is_iterable(mwp) else [mwp], 'q': load if is_iterable(load) else [load]}).sort_values(by='c', ascending=False)
